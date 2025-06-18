@@ -1,0 +1,300 @@
+---
+title: "CleanStatsCSV"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(stringr)
+```
+NEXT 4 BLOCKS ARE HITTING STATS
+
+```{r}
+bluecapsStats <- read_csv("KCLStats/bluecapsStatsRaw.csv")
+new_names <- as.character(bluecapsStats[1, ])   
+colnames(bluecapsStats) <- new_names               
+bluecapsStats <- bluecapsStats[-1, ]
+bluecapsStats <- head(bluecapsStats, -2)
+bluecapsStats <- bluecapsStats[, 1:54]
+bluecapsStats <- bluecapsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, PA, AB, R, H, `2B`, `3B`, HR, RBI, TB, BB, SO, SB, CS, HBP, AVG, OBP, SLG, OPS) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR"))
+bluecapsStats[nrow(bluecapsStats), 1] <- "Total"
+bluecapsStats <- bluecapsStats |> 
+  filter(Name != "NA NA")
+write_csv(bluecapsStats, "KCLStats/bluecapsStatsFinal.csv")
+
+```
+
+```{r}
+bobcatsStats <- read_csv("KCLStats/bobcatsStatsRaw.csv")
+new_names <- as.character(bobcatsStats[1, ])   
+colnames(bobcatsStats) <- new_names               
+bobcatsStats <- bobcatsStats[-1, ]
+bobcatsStats <- head(bobcatsStats, -2)
+bobcatsStats <- bobcatsStats[, 1:54]
+bobcatsStats <- bobcatsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, PA, AB, R, H, `2B`, `3B`, HR, RBI, TB, BB, SO, SB, CS, HBP, AVG, OBP, SLG, OPS) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR"))
+bobcatsStats[nrow(bobcatsStats), 1] <- "Total"
+bobcatsStats <- bobcatsStats |> 
+  filter(Name != "NA NA")
+write_csv(bobcatsStats, "KCLStats/bobcatsStatsFinal.csv")
+
+```
+
+```{r}
+groundslothsStats <- read_csv("KCLStats/groundslothsStatsRaw.csv")
+new_names <- as.character(groundslothsStats[1, ])   
+colnames(groundslothsStats) <- new_names               
+groundslothsStats <- groundslothsStats[-1, ]
+groundslothsStats <- head(groundslothsStats, -2)
+groundslothsStats <- groundslothsStats[, 1:54]
+groundslothsStats <- groundslothsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, PA, AB, R, H, `2B`, `3B`, HR, RBI, TB, BB, SO, SB, CS, HBP, AVG, OBP, SLG, OPS) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR"))
+groundslothsStats[nrow(groundslothsStats), 1] <- "Total"
+groundslothsStats <- groundslothsStats |> 
+  filter(Name != "NA NA")
+write_csv(groundslothsStats, "KCLStats/groundslothsStatsFinal.csv")
+
+```
+
+```{r}
+merchantsStats <- read_csv("KCLStats/merchantsStatsRaw.csv")
+new_names <- as.character(merchantsStats[1, ])   
+colnames(merchantsStats) <- new_names               
+merchantsStats <- merchantsStats[-1, ]
+merchantsStats <- head(merchantsStats, -2)
+merchantsStats <- merchantsStats[, 1:54]
+merchantsStats <- merchantsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, PA, AB, R, H, `2B`, `3B`, HR, RBI, TB, BB, SO, SB, CS, HBP, AVG, OBP, SLG, OPS) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR"))
+merchantsStats[nrow(merchantsStats), 1] <- "Total"
+merchantsStats <- merchantsStats |> 
+  filter(Name != "NA NA")
+write_csv(merchantsStats, "KCLStats/merchantsStatsFinal.csv")
+```
+
+############################################################################################################################
+
+START OF PITCHING STATS
+```{r}
+bluecapsStats <- read_csv("KCLStats/bluecapsStatsRaw.csv")
+new_names <- as.character(bluecapsStats[1, ])   
+colnames(bluecapsStats) <- new_names               
+bluecapsStats <- bluecapsStats[-1, ]
+bluecapsStats <- head(bluecapsStats, -2)
+bluecapsStats <- bluecapsStats[, c(2, 3, 55:107)]
+bluecapsStats <- bluecapsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR")) |> 
+  filter(IP != 0 | H != 0 | BB != 0) |> 
+  mutate(WHIP = sprintf("%.2f", round(WHIP, 2)),
+         FIP = sprintf("%.2f", round(FIP, 2)),
+         whole_inn = floor(IP),
+         outs = (IP - whole_inn) * 10,
+         IP_decimal = whole_inn + (outs / 3),
+         ERA = sprintf("%.2f", round(ER/IP_decimal*9, 2))) |> 
+  select(-whole_inn, -outs, -IP_decimal)
+bluecapsStats[nrow(bluecapsStats), 1] <- "Total"
+write_csv(bluecapsStats, "KCLStats/bluecapsStatsPitchingFinal.csv")
+```
+
+```{r}
+bobcatsStats <- read_csv("KCLStats/bobcatsStatsRaw.csv")
+new_names <- as.character(bobcatsStats[1, ])   
+colnames(bobcatsStats) <- new_names               
+bobcatsStats <- bobcatsStats[-1, ]
+bobcatsStats <- head(bobcatsStats, -2)
+bobcatsStats <- bobcatsStats[, c(2, 3, 55:107)]
+bobcatsStats <- bobcatsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR")) |> 
+  filter(IP != 0 | H != 0 | BB != 0) |> 
+  mutate(WHIP = sprintf("%.2f", round(WHIP, 2)),
+         FIP = sprintf("%.2f", round(FIP, 2)),
+         whole_inn = floor(IP),
+         outs = (IP - whole_inn) * 10,
+         IP_decimal = whole_inn + (outs / 3),
+         ERA = sprintf("%.2f", round(ER/IP_decimal*9, 2))) |> 
+  select(-whole_inn, -outs, -IP_decimal)
+bobcatsStats[nrow(bobcatsStats), 1] <- "Total"
+write_csv(bobcatsStats, "KCLStats/bobcatsStatsPitchingFinal.csv")
+```
+
+```{r}
+groundslothsStats <- read_csv("KCLStats/groundslothsStatsRaw.csv")
+new_names <- as.character(groundslothsStats[1, ])   
+colnames(groundslothsStats) <- new_names               
+groundslothsStats <- groundslothsStats[-1, ]
+groundslothsStats <- head(groundslothsStats, -2)
+groundslothsStats <- groundslothsStats[, c(2, 3, 55:107)]
+groundslothsStats <- groundslothsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR")) |> 
+  filter(!(IP == 0 & H == 0 & BB == 0)) |> 
+  mutate(WHIP = sprintf("%.2f", round(WHIP, 2)),
+         FIP = sprintf("%.2f", round(FIP, 2)),
+         whole_inn = floor(IP),
+         outs = (IP - whole_inn) * 10,
+         IP_decimal = whole_inn + (outs / 3),
+         ERA = sprintf("%.2f", round(ER/IP_decimal*9, 2))) |> 
+  select(-whole_inn, -outs, -IP_decimal)
+groundslothsStats[nrow(groundslothsStats), 1] <- "Total"
+write_csv(groundslothsStats, "KCLStats/groundslothsStatsPitchingFinal.csv")
+```
+
+```{r}
+merchantsStats <- read_csv("KCLStats/merchantsStatsRaw.csv")
+new_names <- as.character(merchantsStats[1, ])   
+colnames(merchantsStats) <- new_names               
+merchantsStats <- merchantsStats[-1, ]
+merchantsStats <- head(merchantsStats, -2)
+merchantsStats <- merchantsStats[, c(2, 3, 55:107)]
+merchantsStats <- merchantsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP) |> 
+  mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
+  filter(GP > 0) |> 
+  filter(!str_detect(Name, "HR")) |> 
+  filter(IP != 0 | H != 0 | BB != 0) |> 
+  mutate(WHIP = sprintf("%.2f", round(WHIP, 2)),
+         FIP = sprintf("%.2f", round(FIP, 2)),
+         whole_inn = floor(IP),
+         outs = (IP - whole_inn) * 10,
+         IP_decimal = whole_inn + (outs / 3),
+         ERA = sprintf("%.2f", round(ER/IP_decimal*9, 2))) |> 
+  select(-whole_inn, -outs, -IP_decimal)
+merchantsStats[nrow(merchantsStats), 1] <- "Total"
+write_csv(merchantsStats, "KCLStats/merchantsStatsPitchingFinal.csv")
+```
+
+#############################################################################################################################
+START OF FIELDING STATS
+```{r}
+bluecapsStats <- read_csv("KCLStats/bluecapsStatsRaw.csv")
+new_names <- as.character(bluecapsStats[1, ])   
+colnames(bluecapsStats) <- new_names               
+bluecapsStats <- bluecapsStats[-1, ]
+bluecapsStats <- head(bluecapsStats, -2)
+bluecapsStats <- bluecapsStats[, c(2, 3, 4, 143:148)]
+bluecapsStats <- bluecapsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, TC, A, PO, FPCT, E, DP) |> 
+  filter(!str_detect(Name, "HR"))
+bluecapsStats[nrow(bluecapsStats), 1] <- "Total"
+bluecapsStats <- bluecapsStats |> 
+  filter(Name != "NA NA")
+write_csv(bluecapsStats, "KCLStats/bluecapsStatsFieldingFinal.csv")
+```
+
+```{r}
+bobcatsStats <- read_csv("KCLStats/bobcatsStatsRaw.csv")
+new_names <- as.character(bobcatsStats[1, ])   
+colnames(bobcatsStats) <- new_names               
+bobcatsStats <- bobcatsStats[-1, ]
+bobcatsStats <- head(bobcatsStats, -2)
+bobcatsStats <- bobcatsStats[, c(2, 3, 4, 143:148)]
+bobcatsStats <- bobcatsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, TC, A, PO, FPCT, E, DP) |> 
+  filter(!str_detect(Name, "HR"))
+bobcatsStats[nrow(bobcatsStats), 1] <- "Total"
+bobcatsStats <- bobcatsStats |> 
+  filter(Name != "NA NA")
+write_csv(bobcatsStats, "KCLStats/bobcatsStatsFieldingFinal.csv")
+```
+
+```{r}
+groundslothsStats <- read_csv("KCLStats/groundslothsStatsRaw.csv")
+new_names <- as.character(groundslothsStats[1, ])   
+colnames(groundslothsStats) <- new_names               
+groundslothsStats <- groundslothsStats[-1, ]
+groundslothsStats <- head(groundslothsStats, -2)
+groundslothsStats <- groundslothsStats[, c(2, 3, 4, 143:148)]
+groundslothsStats <- groundslothsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, TC, A, PO, FPCT, E, DP) |> 
+  filter(!str_detect(Name, "HR"))
+groundslothsStats[nrow(groundslothsStats), 1] <- "Total"
+groundslothsStats <- groundslothsStats |> 
+  filter(Name != "NA NA")
+write_csv(groundslothsStats, "KCLStats/groundslothsStatsFieldingFinal.csv")
+```
+
+```{r}
+merchantsStats <- read_csv("KCLStats/merchantsStatsRaw.csv")
+new_names <- as.character(merchantsStats[1, ])   
+colnames(merchantsStats) <- new_names               
+merchantsStats <- merchantsStats[-1, ]
+merchantsStats <- head(merchantsStats, -2)
+merchantsStats <- merchantsStats[, c(2, 3, 4, 143:148)]
+merchantsStats <- merchantsStats |> 
+  mutate(
+    Name = paste0(First, " ", Last)
+  ) |> 
+  select(-First, -Last) |> 
+  select(Name, TC, A, PO, FPCT, E, DP) |> 
+  filter(!str_detect(Name, "HR"))
+merchantsStats[nrow(merchantsStats), 1] <- "Total"
+merchantsStats <- merchantsStats |> 
+  filter(Name != "NA NA")
+write_csv(merchantsStats, "KCLStats/merchantsStatsFieldingFinal.csv")
+```
+
+
+
+
+
+
