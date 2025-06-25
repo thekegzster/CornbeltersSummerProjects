@@ -1,0 +1,353 @@
+---
+title: "BaseballSavantPitching"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(mgcv)
+library(purrr)
+library(lubridate)
+library(zoo)
+```
+
+Load in Data
+```{r}
+KCLyakkertechData <- read_csv("KCLYakkertechData.csv")
+BeltersyakkertechData <- read_csv("BeltersPitcherYakkertechData.csv")
+```
+
+
+Function to calculate advanced pitching stats
+```{r}
+getAdvancedPitching <- function(df, name) {
+  df <- df |> 
+    filter(Pitcher == name)
+  
+  FastballVelo <- df |> 
+    filter(TaggedPitchType == "Fastball") |> 
+    summarize(velo = mean(RelSpeed, na.rm = TRUE)) |> 
+    pull(velo)
+  
+  avgExitVelo <- df |> 
+    filter(!is.na(ExitSpeed)) |> 
+    summarize(
+      avgExitVelo = mean(ExitSpeed)
+    ) |> 
+  pull(avgExitVelo)
+  
+  hardHitPct <- df |> 
+    filter(!is.na(ExitSpeed)) |> 
+    summarize(pct = mean(ExitSpeed >= 90)) |> 
+    pull(pct)
+  
+  kPct <- df |> 
+    filter(!is.na(PlayResult) | !is.na(KorBB)) |> 
+    summarize(
+      pct = {
+        total_PA <- n()
+        strikeouts <- sum(
+          PlayResult %in% c("StrikeoutLooking", "StrikeoutSwinging"), na.rm = TRUE
+        )
+      if(total_PA == 0) 0 else strikeouts / total_PA
+      }
+    ) |> 
+    pull(pct)
+  
+  bbPct <- df |> 
+    filter(!is.na(PlayResult)) |>
+    summarize(pct = sum(PlayResult == "Walk", na.rm = TRUE) / n()) |> 
+    pull(pct)
+  
+  whiffPct <- df |> 
+    filter(!is.na(PitchCall)) |> 
+    filter(!(PitchCall %in% c("BallCalled", "HitByPitch", "StrikeCalled"))) |> 
+    summarize(pct = mean(PitchCall == "StrikeSwinging")) |> 
+    pull(pct)
+  
+  chasePct <- df |> 
+    filter(IsStrike == FALSE) |> 
+    filter(!is.na(PitchCall)) |> 
+    summarize(pct = mean(IsSwing == TRUE)) |> 
+    pull(pct)
+  
+  groundBallPct <- df |> 
+    filter(!is.na(HitType) & HitType != "Throwdown") |> 
+    summarize(pct = mean(HitType == "GroundBall")) |> 
+    pull(pct)
+  
+  xBA <- df |> 
+    filter(!is.na(PlayResult)) |> 
+    filter(PlayResult != "Walk" & PlayResult != "HitByPitch") |> 
+    filter(!(PlayResult %in% c("Single", "Double", "Triple", "HomeRun", "Out", "Error") & is.na(Angle) & is.na(ExitSpeed))) |>  
+    summarize(avg = mean(predicted_xba)) |> 
+    pull(avg)
+  
+  xERA <- df |> 
+    filter(!is.na(PlayResult)) |> 
+    filter(!(PlayResult %in% c("Single", "Double", "Triple", "HomeRun", "Out", "Error") & is.na(Angle) & is.na(ExitSpeed))) |> 
+    summarize(avg = 10 * mean(predicted_xwoba)) |> 
+    pull(avg)
+  
+  return(
+    list(
+      xERA = xERA,
+      xBA = xBA,
+      FastballVelo = FastballVelo,
+      avgExitVelo = avgExitVelo,
+      chasePct = chasePct,
+      whiffPct = whiffPct,
+      kPct = kPct,
+      bbPct = bbPct,
+      hardHitPct = hardHitPct,
+      groundBallPct = groundBallPct
+    )
+  )
+  
+}
+```
+
+Creating Pitcher Advanced Stats Dataframe
+```{r}
+kcl_pitcher_list <- split(KCLyakkertechData, KCLyakkertechData$Pitcher)
+
+kcl_advanced_by_pitcher <- map2_df(
+  .x = kcl_pitcher_list,
+  .y = names(kcl_pitcher_list),
+  ~ as_tibble(getAdvancedPitching(.x, .y)),
+  .id = "Pitcher"
+)
+
+belters_pitcher_list <- split(BeltersyakkertechData, BeltersyakkertechData$Pitcher)
+
+belters_advanced_by_pitcher <- map2_df(
+  .x = belters_pitcher_list,
+  .y = names(belters_pitcher_list),
+  ~ as_tibble(getAdvancedPitching(.x, .y)),
+  .id = "Pitcher"
+)
+
+invert_cols <- c("xERA", "xBA", "avgExitVelo", "bbPct", "hardHitPct")
+
+#Create Percentile Columns
+kcl_advanced_by_pitcher <- kcl_advanced_by_pitcher |> 
+  mutate(
+    across(
+      .cols = where(is.numeric) & !all_of(invert_cols),
+      .fns  = ~ percent_rank(.) * 100,
+      .names = "{.col}_pct"
+    )
+  ) |> 
+  mutate(
+    across(
+      .cols = all_of(invert_cols),
+      .fns  = ~ percent_rank(-.) * 100,
+      .names = "{.col}_pct"
+    )
+  )
+
+belters_advanced_by_pitcher <- belters_advanced_by_pitcher |> 
+  mutate(
+    across(
+      .cols = where(is.numeric) & !all_of(invert_cols),
+      .fns  = ~ percent_rank(.) * 100,
+      .names = "{.col}_pct"
+    )
+  ) |> 
+  mutate(
+    across(
+      .cols = all_of(invert_cols),
+      .fns  = ~ percent_rank(-.) * 100,
+      .names = "{.col}_pct"
+    )
+  )
+
+```
+
+Attach basic pitching stats to advanced stats
+```{r}
+kcl_basicPitching_files <- c(
+  "KCLStats/bluecapsStatsPitchingFinal.csv",
+  "KCLStats/bobcatsStatsPitchingFinal.csv",
+  "KCLStats/groundslothsStatsPitchingFinal.csv",
+  "KCLStats/merchantsStatsPitchingFinal.csv"
+)
+
+kcl_basic_pitching_dfs <- kcl_basicPitching_files |> 
+  map(read_csv)
+
+KCLBasicPitchingStats <- bind_rows(kcl_basic_pitching_dfs) |> 
+  filter(Name != "Total") |> 
+  rename(Pitcher = Name)
+
+KCLSavantPitchingData <- kcl_advanced_by_pitcher |> 
+  left_join(KCLBasicPitchingStats, by = "Pitcher")
+
+beltersBasicStats <- read_csv("BeltersStats/beltersPitchingFinal.csv")
+BeltersSavantPitchingData <- belters_advanced_by_pitcher |> 
+  left_join(beltersBasicStats, by = "Pitcher")
+```
+Function to calculate advanced reference stats KCL
+```{r}
+runsPerWin <- 11
+FIP_constant <- 3
+
+#Add IP_decimal and RA9
+KCLSavantPitchingData <- KCLSavantPitchingData |> 
+  mutate(
+    IP_decimal = {
+      whole <- floor(IP)
+      outs  <- round((IP - whole) * 10)
+      whole + outs/3
+    },
+    RA9 = R / IP_decimal * 9,
+    G = GP
+  ) |> 
+  select(-GP)
+
+#Calculate FIP
+KCLSavantPitchingData <- KCLSavantPitchingData |> 
+  mutate(
+    FIP_numerator = 13 * HR + 3 * (BB + HBP) - 2 * SO,
+    FIP_raw = FIP_numerator / IP_decimal,
+    FIP2 = FIP_raw + FIP_constant
+  )
+
+leagueSums <- KCLSavantPitchingData |> 
+  summarize(IP_sum = sum(IP_decimal, na.rm = TRUE),
+            ER_sum = sum(ER, na.rm = TRUE),
+            R_sum = sum(R, na.rm = TRUE),
+            HR_sum = sum(HR, na.rm = TRUE),
+            BB_sum = sum(BB, na.rm = TRUE),
+            HBP_sum = sum(HBP, na.rm = TRUE),
+            SO_sum = sum(SO, na.rm = TRUE),
+            leagueERA = ER_sum / IP_sum * 9,
+            leagueFIP = (13 * HR_sum + 3 * (BB_sum + HBP_sum) - 2 * SO_sum) / IP_sum + FIP_constant,
+            leagueRA9 = R_sum / IP_sum * 9
+  )
+
+leagueERA <- leagueSums |>  pull(leagueERA)
+leagueFIP <- leagueSums |>  pull(leagueFIP)
+leagueRA9 <- leagueSums |>  pull(leagueRA9)
+
+#Add Rate per 9 inning stats
+KCLSavantPitchingData <- KCLSavantPitchingData |> 
+  mutate(
+    H9 = H / IP_decimal * 9,
+    HR9 = HR / IP_decimal * 9,
+    BB9 = BB / IP_decimal * 9,
+    SO9 = SO / IP_decimal * 9,
+    `SO/BB` = SO / BB
+  )
+
+#Calculate ERA+
+KCLSavantPitchingData <- KCLSavantPitchingData |> 
+  mutate(
+    `ERA+` = round(100 * leagueERA / ERA, 0)
+  )
+
+#Calculate pitcher WAR
+KCLSavantPitchingData <- KCLSavantPitchingData |> 
+  mutate(
+    RA_diff = leagueRA9 - RA9,
+
+    #wins above average
+    WAA_RA  = (RA_diff  / runsPerWin) * (IP_decimal/9),
+
+    #replacement WAR
+    rep_WAA = ((leagueRA9 * 1.25 - leagueRA9) / runsPerWin) * (IP_decimal/9),
+
+    # final WAR
+    WAR_r = WAA_RA  + rep_WAA
+  ) |> 
+  select(-IP_decimal, -FIP_raw, -FIP_numerator, -RA_diff, -FIP)
+
+```
+
+Function to calculate advanced reference stats Belters
+```{r}
+runsPerWin <- 11
+FIP_constant <- 3
+
+#Add IP_decimal and RA9
+BeltersSavantPitchingData <- BeltersSavantPitchingData |> 
+  mutate(
+    IP_decimal = {
+      whole <- floor(IP)
+      outs  <- round((IP - whole) * 10)
+      whole + outs/3
+    },
+    RA9 = R / IP_decimal * 9
+  )
+
+#Calculate FIP
+BeltersSavantPitchingData <- BeltersSavantPitchingData |> 
+  mutate(
+    FIP_numerator = 13 * HR + 3 * (BB + HBP) - 2 * SO,
+    FIP_raw = FIP_numerator / IP_decimal,
+    FIP2 = FIP_raw + FIP_constant
+  )
+
+leagueSums <- BeltersSavantPitchingData |> 
+  summarize(IP_sum = sum(IP_decimal, na.rm = TRUE),
+            ER_sum = sum(ER, na.rm = TRUE),
+            R_sum = sum(R, na.rm = TRUE),
+            HR_sum = sum(HR, na.rm = TRUE),
+            BB_sum = sum(BB, na.rm = TRUE),
+            HBP_sum = sum(HBP, na.rm = TRUE),
+            SO_sum = sum(SO, na.rm = TRUE),
+            leagueERA = ER_sum / IP_sum * 9,
+            leagueFIP = (13 * HR_sum + 3 * (BB_sum + HBP_sum) - 2 * SO_sum) / IP_sum + FIP_constant,
+            leagueRA9 = R_sum / IP_sum * 9
+  )
+
+leagueERA <- leagueSums |>  pull(leagueERA)
+leagueFIP <- leagueSums |>  pull(leagueFIP)
+leagueRA9 <- leagueSums |>  pull(leagueRA9)
+
+#Add Rate per 9 inning stats
+BeltersSavantPitchingData <- BeltersSavantPitchingData |> 
+  mutate(
+    H9 = H / IP_decimal * 9,
+    HR9 = HR / IP_decimal * 9,
+    BB9 = BB / IP_decimal * 9,
+    SO9 = SO / IP_decimal * 9,
+    `SO/BB` = SO / BB
+  )
+
+#Calculate ERA+
+BeltersSavantPitchingData <- BeltersSavantPitchingData |> 
+  mutate(
+    `ERA+` = round(100 * leagueERA / ERA, 0)
+  )
+
+#Calculate pitcher WAR
+BeltersSavantPitchingData <- BeltersSavantPitchingData |> 
+  mutate(
+    RA_diff = leagueRA9 - RA9,
+
+    #wins above average
+    WAA_RA  = (RA_diff  / runsPerWin) * (IP_decimal/9),
+
+    #replacement WAR
+    rep_WAA = ((leagueRA9 * 1.25 - leagueRA9) / runsPerWin) * (IP_decimal/9),
+
+    # final WAR
+    WAR_r = WAA_RA  + rep_WAA
+  ) |> 
+  select(-IP_decimal, -FIP_raw, -FIP_numerator, -RA_diff)
+
+```
+
+```{r}
+savantPitchingData <- bind_rows(KCLSavantPitchingData, BeltersSavantPitchingData)
+write_csv(KCLSavantPitchingData, "KCLPitcherSavantData.csv")
+write_csv(BeltersSavantPitchingData, "BeltersPitcherSavantData.csv")
+write_csv(savantPitchingData, "PitcherSavantData.csv")
+```
+
+
+
+
+
+

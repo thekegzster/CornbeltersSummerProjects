@@ -1,41 +1,3 @@
-# Data Collection
-kcl_path = "/Users/noahlippman/Documents/Github/Kernelytics-Projects/kclData"
-kcl_files <- list.files(path = kcl_path)
-game_data <- read.csv(paste(kcl_path, "/", kcl_files[1], sep = ""))
-
-for(i in kcl_files[2:length(kcl_files)]){
-  game_data = bind_rows(game_data, read.csv(paste(kcl_path,"/",i, sep = "")))
-}
-
-belters_path = "/Users/noahlippman/Documents/GitHub/Kernelytics-Projects/CornBeltersData"
-belters_files <- list.files(path = belters_path)
-
-for(i in belters_files[1:length(belters_files)]){
-  game_data = bind_rows(game_data, read.csv(paste(belters_path, "/", i, sep = "")))
-}
-
-#Fix Names in DataFrame
-corrections <- c(
-  "Justin Trusner" = "Jacob Trusner",
-  "Brooks Neuhof" = "Brooks Neuhoff",
-  "Teagan Disharoom" = "Teagan Disharoon",
-  "Kam Ross" = "Kam Ross",
-  "Brayden Windy" = "Brayden Windy",
-  "Sammy Descarpentrie" = "Sam DesCarpentrie"
-)
-
-fixNames <- function(df, column, lookup){
-  old_values <- df[[column]]
-  needs_fix <- old_values %in% names(lookup)
-  df[[column]] <- ifelse(
-    needs_fix,
-    lookup[old_values],
-    old_values
-  )
-  return(df)
-}
-game_data <- fixNames(game_data, "Catcher", corrections)
-
 #Assign Strikezone boxes to each of the pitches
 strike_zone_augment <- function(data) {
   strike_zone <- data %>%
@@ -143,8 +105,8 @@ CS_above_average <- function(player_name, league, data){
 }
 
 # Plot a Player's CS% HeatMap
-Catcher_Framing_Map <- function(player_name, league, data){
-  strike_zone_data <- strike_zone_augment(game_data)
+Catcher_Framing_Map <- function(data, player_name, league){
+  strike_zone_data <- strike_zone_augment(data)
   data <- data_processer(player_name, league, strike_zone_data)
   CS_Added <- CS_above_average(player_name, league, strike_zone_data)
   p <- ggplot(data, aes(xZone, yZone, fill = CS_Rate_aboveAverage)) +
@@ -197,7 +159,7 @@ CatcherFramingUI <- function(id) {
       flex-direction: row;
       gap: 10px;
       background: #f9f9f9;
-      padding: 10px;
+      padding: 2px;
       border: 1px solid #ccc;
       border-radius: 8px;
     ",
@@ -209,12 +171,12 @@ CatcherFramingUI <- function(id) {
   )
 }
 
-CatcherFramingServer <- function(id, data_source, player_name, league) {
+CatcherFramingServer <- function(id, data, player_name, league) {
   moduleServer(id, function(input, output, session) {
     output$Catcher_Framing <- renderPlot({
       # make sure we have a catcher
       req(player_name())
-      df <- data_source()
+      df <- data()
       league <- league()
       # call your function
       Catcher_Framing_Map(df, player_name(), league)

@@ -7,6 +7,8 @@ format: html
 library(tidyverse)
 library(mgcv)
 library(purrr)
+library(zoo)
+library(stringr)
 ```
 
 Import all Yakkertech Data
@@ -52,8 +54,16 @@ corrections <- c(
   "Cameron Heinold" = "Camden Heinold",
   "Sammy Driscoll" = "Sam Driscoll",
   "Roy Rolston" = "Roy Ralston",
-  "Tyson Sorenson" = "Tysen Sorenson",
-  "Chase Peterson" = "Chase Petersen"
+  "Tyson Sorensen" = "Tysen Sorensen",
+  "Chase Peterson" = "Chase Petersen",
+  "Cole Mcclusky" = "Cole McClusky",
+  "Zach O'donnell" = "Zach O'Donnell",
+  "Will O'gorman" = "Will O'Gorman",
+  "Rj Bergren" = "RJ Bergren",
+  "Luka Zachman" = "Luka Zakman",
+  "Braden Vanderhe" = "Braden Vanderheydt",
+  "Jackson  Natanek" = "Jackson Natanek",
+  "Josh  Eisfelder" = "Josh Eisfelder"
 )
 
 fixNames <- function(df, column, lookup){
@@ -69,13 +79,25 @@ fixNames <- function(df, column, lookup){
 
 KCLyakkertechData <- fixNames(KCLyakkertechData, "Batter", corrections)
 KCLyakkertechData <- fixNames(KCLyakkertechData, "Pitcher", corrections)
+KCLyakkertechData <- fixNames(KCLyakkertechData, "Catcher", corrections)
 
+BeltersPitcherYakkertechData <- BeltersyakkertechData |> 
+  filter(PitcherTeam == "Normal cornbelters")
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersyakkertechData |> 
   filter(BatterTeam == "Normal cornbelters")
 
-BeltersyakkertechData <- fixNames(BeltersyakkertechData, "Batter", corrections)
-BeltersyakkertechData <- fixNames(BeltersyakkertechData, "Pitcher", corrections)
+BeltersHitterYakkertechData <- fixNames(BeltersHitterYakkertechData, "Batter", corrections)
+BeltersPitcherYakkertechData <- fixNames(BeltersPitcherYakkertechData, "Pitcher", corrections)
+BeltersPitcherYakkertechData <- fixNames(BeltersPitcherYakkertechData, "Catcher", corrections)
+
+#Fix team names with wrong years
+KCLyakkertechData <- KCLyakkertechData |> 
+  mutate(across(
+    c(BatterTeam, PitcherTeam, CatcherTeam),
+    ~ str_replace(., "\\d{4}$", "2025")
+  ))
+
 ```
 
 
@@ -88,7 +110,13 @@ KCLyakkertechData <- KCLyakkertechData |>
     PlayResult = ifelse(!is.na(PitchCall) & PitchCall == "HitByPitch", "HitByPitch", PlayResult)
   )
 
-BeltersyakkertechData <- BeltersyakkertechData |>
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |>
+  mutate(
+    PlayResult = ifelse(!is.na(KorBB) & KorBB == "Walk", "Walk", PlayResult),
+    PlayResult = ifelse(!is.na(PitchCall) & PitchCall == "HitByPitch", "HitByPitch", PlayResult)
+  )
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |>
   mutate(
     PlayResult = ifelse(!is.na(KorBB) & KorBB == "Walk", "Walk", PlayResult),
     PlayResult = ifelse(!is.na(PitchCall) & PitchCall == "HitByPitch", "HitByPitch", PlayResult)
@@ -108,7 +136,20 @@ KCLyakkertechData <- KCLyakkertechData |>
               PitchCall == "Foul"
   )
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  mutate(
+      IsStrike = PlateLocHeight >= 1.5 &
+                    PlateLocHeight <= 3.5 &
+                    PlateLocSide   >= -1 &
+                    PlateLocSide   <=  1
+    ) |> 
+  mutate(
+    IsSwing = PitchCall == "InPlay" |
+              PitchCall == "StrikeSwinging" |
+              PitchCall == "Foul"
+  )
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   mutate(
       IsStrike = PlateLocHeight >= 1.5 &
                     PlateLocHeight <= 3.5 &
@@ -142,7 +183,23 @@ KCLyakkertechData <- KCLyakkertechData |>
       )
     )
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  mutate(
+      zone = case_when(
+        PlateLocHeight > 2.833333 & PlateLocHeight <= 3.5 & PlateLocSide >= -1 & PlateLocSide <= -.3333333           ~ 3,
+        PlateLocHeight > 2.833333 & PlateLocHeight <= 3.5 & PlateLocSide > -.3333333 & PlateLocSide <= .3333333      ~ 2,
+        PlateLocHeight > 2.833333 & PlateLocHeight <= 3.5 & PlateLocSide > .3333333 & PlateLocSide <= 1              ~ 1,
+        PlateLocHeight > 2.1666666 & PlateLocHeight <= 2.833333 & PlateLocSide >= -1 & PlateLocSide <= -.3333333      ~ 6,
+        PlateLocHeight > 2.1666666 & PlateLocHeight <= 2.833333 & PlateLocSide > -.3333333 & PlateLocSide <= .3333333 ~ 5,
+        PlateLocHeight > 2.1666666 & PlateLocHeight <= 2.833333 & PlateLocSide > .3333333 & PlateLocSide <= 1         ~ 4,
+        PlateLocHeight >= 1.5 & PlateLocHeight <= 2.1666666 & PlateLocSide >= -1 & PlateLocSide <= -.3333333          ~ 9,
+        PlateLocHeight >= 1.5 & PlateLocHeight <= 2.1666666 & PlateLocSide > -.3333333 & PlateLocSide <= .3333333     ~ 8,
+        PlateLocHeight >= 1.5 & PlateLocHeight <= 2.1666666 & PlateLocSide > .3333333 & PlateLocSide <= 1             ~ 7,
+        TRUE ~ NA_integer_
+      )
+    )
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   mutate(
       zone = case_when(
         PlateLocHeight > 2.833333 & PlateLocHeight <= 3.5 & PlateLocSide >= -1 & PlateLocSide <= -.3333333           ~ 3,
@@ -181,7 +238,27 @@ KCLyakkertechData <- KCLyakkertechData |>
     )
   )
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  mutate(
+    PitchCategory = case_when(
+      TaggedPitchType %in% c("Cutter", "Fastball", "Sinker") ~ "Fastball",
+      TaggedPitchType %in% c("Changeup", "Splitter") ~ "Offspeed",
+      TaggedPitchType %in% c("Curveball", "Slider") ~ "Breaking",
+      TRUE ~ "Other"
+    )
+  ) |> 
+  mutate(
+    bases = case_when(
+      PlayResult == "Single" ~ 1,
+      PlayResult == "Double" ~ 2,
+      PlayResult == "Triple" ~ 3,
+      PlayResult == "HomeRun" ~ 4,
+      TRUE ~ 0
+    )
+  )
+
+#Belters Pitchers
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   mutate(
     PitchCategory = case_when(
       TaggedPitchType %in% c("Cutter", "Fastball", "Sinker") ~ "Fastball",
@@ -262,11 +339,11 @@ KCLyakkertechData <- KCLyakkertechData |>
 ```
 
 ```{r}
-#FOr Belters
-BeltersyakkertechData <- BeltersyakkertechData |> 
+#For Belters Hitters
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   mutate(row_id = row_number())
 
-modelYakkertechData <- BeltersyakkertechData |> 
+modelYakkertechData <- BeltersHitterYakkertechData |> 
   select(row_id, ExitSpeed, Angle) |> 
   filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
   rename(
@@ -281,7 +358,35 @@ savant <- savant |>
 modelYakkertechData$predicted_xba <- predict(fit_xba, newdata = modelYakkertechData)
 modelYakkertechData$predicted_xba <- pmax(0.0001, modelYakkertechData$predicted_xba)
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  left_join(
+    modelYakkertechData |> select(row_id, predicted_xba),
+    by = "row_id"
+  )
+
+```
+
+```{r}
+#For Belters Pitchers
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+  mutate(row_id = row_number())
+
+modelYakkertechData <- BeltersPitcherYakkertechData |> 
+  select(row_id, ExitSpeed, Angle) |> 
+  filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
+  rename(
+    launch_speed = ExitSpeed,
+    launch_angle = Angle
+  )
+
+savant <- savant |> 
+  filter(!is.na(launch_speed) & !is.na(launch_angle)) |> 
+  filter(expected_babip > 0 & expected_babip < 1)
+
+modelYakkertechData$predicted_xba <- predict(fit_xba, newdata = modelYakkertechData)
+modelYakkertechData$predicted_xba <- pmax(0.0001, modelYakkertechData$predicted_xba)
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   left_join(
     modelYakkertechData |> select(row_id, predicted_xba),
     by = "row_id"
@@ -319,8 +424,8 @@ KCLyakkertechData <- KCLyakkertechData |>
 ```
 
 ```{r}
-#For Belters
-modelYakkertechData <- BeltersyakkertechData |> 
+#For Belters Hitters
+modelYakkertechData <- BeltersHitterYakkertechData |> 
   select(row_id, ExitSpeed, Angle) |> 
   filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
   rename(
@@ -331,13 +436,41 @@ modelYakkertechData <- BeltersyakkertechData |>
 modelYakkertechData$predicted_xwoba <- predict(fit_xwoba, newdata = modelYakkertechData)
 modelYakkertechData$predicted_xwoba <- pmax(0.0001, modelYakkertechData$predicted_xwoba)
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   left_join(
     modelYakkertechData |> select(row_id, predicted_xwoba),
     by = "row_id"
   )
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  mutate(predicted_xwoba = case_when(
+    KorBB == "Walk" | PlayResult == "Walk" ~ 0.3,
+    PlayResult == "HitByPitch" ~ 0.3,
+    TRUE ~ predicted_xwoba
+  ))
+
+```
+
+```{r}
+#For Belters Pitchers
+modelYakkertechData <- BeltersPitcherYakkertechData |> 
+  select(row_id, ExitSpeed, Angle) |> 
+  filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
+  rename(
+    launch_speed = ExitSpeed,
+    launch_angle = Angle
+  )
+
+modelYakkertechData$predicted_xwoba <- predict(fit_xwoba, newdata = modelYakkertechData)
+modelYakkertechData$predicted_xwoba <- pmax(0.0001, modelYakkertechData$predicted_xwoba)
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+  left_join(
+    modelYakkertechData |> select(row_id, predicted_xwoba),
+    by = "row_id"
+  )
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   mutate(predicted_xwoba = case_when(
     KorBB == "Walk" | PlayResult == "Walk" ~ 0.3,
     PlayResult == "HitByPitch" ~ 0.3,
@@ -375,8 +508,8 @@ KCLyakkertechData <- KCLyakkertechData |>
 ```
 
 ```{r}
-#For Belters
-modelYakkertechData <- BeltersyakkertechData |> 
+#For Belters Hitters
+modelYakkertechData <- BeltersHitterYakkertechData |> 
   select(row_id, ExitSpeed, Angle) |> 
   filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
   rename(
@@ -387,23 +520,97 @@ modelYakkertechData <- BeltersyakkertechData |>
 modelYakkertechData$predicted_xslg <- predict(fit_xslg, newdata = modelYakkertechData)
 modelYakkertechData$predicted_xslg <- pmax(0.0001, modelYakkertechData$predicted_xslg)
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   left_join(
     modelYakkertechData |> select(row_id, predicted_xslg),
     by = "row_id"
   )
 
-BeltersyakkertechData <- BeltersyakkertechData |> 
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   mutate(predicted_xba = replace_na(predicted_xba, 0),
          predicted_xwoba = replace_na(predicted_xwoba, 0),
          predicted_xslg = replace_na(predicted_xslg, 0))
 ```
 
-Add Index Row and change date format
 ```{r}
-#Add Index Row
-yakkertechData <- bind_rows(KCLyakkertechData, BeltersyakkertechData)
-yakkertechData <- yakkertechData |> 
+#For Belters Pitchers
+modelYakkertechData <- BeltersPitcherYakkertechData |> 
+  select(row_id, ExitSpeed, Angle) |> 
+  filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
+  rename(
+    launch_speed = ExitSpeed,
+    launch_angle = Angle
+  )
+
+modelYakkertechData$predicted_xslg <- predict(fit_xslg, newdata = modelYakkertechData)
+modelYakkertechData$predicted_xslg <- pmax(0.0001, modelYakkertechData$predicted_xslg)
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+  left_join(
+    modelYakkertechData |> select(row_id, predicted_xslg),
+    by = "row_id"
+  )
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+  mutate(predicted_xba = replace_na(predicted_xba, 0),
+         predicted_xwoba = replace_na(predicted_xwoba, 0),
+         predicted_xslg = replace_na(predicted_xslg, 0))
+```
+
+Add in Predicted xWOBA, xBA, xSLG based on KCL and Cornbelters data
+```{r}
+# KCLpitchXBAData <- read_csv("YakkertechData/BaseballSavant/kcl_xba.csv")
+# KCLpitchXSLGData <- read_csv("YakkertechData/BaseballSavant/kcl_xslg.csv")
+# BelterspitchXBAData <- read_csv("YakkertechData/BaseballSavant/cornbelters_xba.csv")
+# BelterspitchXSLGData <- read_csv("YakkertechData/BaseballSavant/cornbelters_xslg.csv")
+# 
+# pitchXWOBAData <- read_csv("YakkertechData/BaseballSavant/Pitch_By_Pitch_xWOBA.csv") |> 
+#   select(PitchUUID, xWOBA)
+# pitchXBAData <- bind_rows(KCLpitchXBAData, BelterspitchXBAData)
+# pitchXSLGData <- bind_rows(KCLpitchXSLGData, BelterspitchXSLGData)
+# 
+# KCLyakkertechData |> 
+#   left_join(pitchXWOBAData, by = "PitchUUID") |> 
+#   left_join(pitchXBAData, by = "PitchUUID") |> 
+#   left_join(pitchXSLGData, by = "PitchUUID")
+# 
+
+```
+
+
+Add Index Column and change date format
+```{r}
+#Add Index column
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+  mutate(
+    Index = NA,
+    PlayerPA = NA,
+    rolling_xwOBA = NA
+  )
+
+#Find Unique pitchers and hitters
+KCLhitters <- unique(KCLyakkertechData$Batter)
+Beltershitters <- unique(BeltersHitterYakkertechData$Batter)
+hitters  <- union(KCLhitters, Beltershitters)
+
+KCLpitchers <- unique(KCLyakkertechData$Pitcher)
+Belterspitchers <- unique(BeltersPitcherYakkertechData$Pitcher)
+pitchers <- union(KCLpitchers, Belterspitchers)
+
+#Add Date format and index column
+KCLyakkertechData <- KCLyakkertechData |> 
+  mutate(Date = mdy(Date)) |> 
+  arrange(Date, Time) |> 
+  mutate(Index = row_number()) |> 
+  filter(!is.na(Date) & !is.na(Time))
+
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  mutate(Date = mdy(Date)) |> 
+  arrange(Date, Time) |> 
+  mutate(Index = row_number()) |> 
+  filter(!is.na(Date) & !is.na(Time))
+
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
   mutate(Date = mdy(Date)) |> 
   arrange(Date, Time) |> 
   mutate(Index = row_number()) |> 
@@ -412,7 +619,8 @@ yakkertechData <- yakkertechData |>
 
 Create Rolling xWOBA
 ```{r}
-rollingXWOBA <- yakkertechData |> 
+#KCL
+rollingXWOBA <- KCLyakkertechData |> 
   filter(!is.na(PlayResult)) |> 
   filter(!(PlayResult %in% c("Single", "Double", "Triple", "HomeRun", "Out", "Error") & is.na(Angle) & is.na(ExitSpeed))) |> 
   arrange(Batter, Date, Time) |> 
@@ -430,15 +638,39 @@ rollingXWOBA <- yakkertechData |>
   ungroup() |> 
   select(Index, PlayerPA, rolling_xwOBA)
 
-yakkertechData <- yakkertechData |> 
+KCLyakkertechData <- KCLyakkertechData |> 
+  left_join(rollingXWOBA, by = "Index")
+```
+
+```{r}
+#Belters Hitters
+rollingXWOBA <- BeltersHitterYakkertechData |> 
+  filter(!is.na(PlayResult)) |> 
+  filter(!(PlayResult %in% c("Single", "Double", "Triple", "HomeRun", "Out", "Error") & is.na(Angle) & is.na(ExitSpeed))) |> 
+  arrange(Batter, Date, Time) |> 
+  group_by(Batter) |> 
+   mutate(
+    PlayerPA = row_number(),
+    rolling_xwOBA = rollapplyr(
+      predicted_xwoba,
+      width = 100,
+      FUN = mean,
+      fill = NA,
+      partial = TRUE
+    )
+  ) |> 
+  ungroup() |> 
+  select(Index, PlayerPA, rolling_xwOBA)
+
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   left_join(rollingXWOBA, by = "Index")
 ```
 
 Save Data
 ```{r}
 write_csv(KCLyakkertechData, "KCLYakkertechData.csv")
-write_csv(BeltersyakkertechData, "BeltersYakkertechData.csv")
-write_csv(yakkertechData, "YakkertechData.csv")
+write_csv(BeltersHitterYakkertechData, "BeltersHitterYakkertechData.csv")
+write_csv(BeltersPitcherYakkertechData, "BeltersPitcherYakkertechData.csv")
 ```
 
 

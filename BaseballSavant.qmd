@@ -14,7 +14,7 @@ library(zoo)
 Load in Data
 ```{r}
 KCLyakkertechData <- read_csv("KCLYakkertechData.csv")
-BeltersyakkertechData <- read_csv("BeltersYakkertechData.csv")
+BeltersyakkertechData <- read_csv("BeltersHitterYakkertechData.csv")
 ```
 
 
@@ -133,68 +133,6 @@ getAdvancedHitting <- function(df, name){
 
 ```
 
-Function to calculate advanced pitching stats
-```{r}
-getAdvancedPitching <- function(df, name) {
-  df <- df |> 
-    filter(Pitcher == name)
-  
-  FastballVelo <- df |> 
-    filter(TaggedPitchType == "Fastball") |> 
-    summarize(velo = mean(RelSpeed)) |> 
-    pull(velo)
-  
-  avgExitVelo <- df |> 
-    filter(!is.na(ExitSpeed)) |> 
-    summarize(
-      avgExitVelo = mean(ExitSpeed)
-    ) |> 
-  pull(avgExitVelo)
-  
-  hardHitPct <- df |> 
-    filter(!is.na(ExitSpeed)) |> 
-    summarize(pct = mean(ExitSpeed >= 95)) |> 
-    pull(pct)
-  
-  kPct <- df |> 
-    filter(!is.na(PlayResult) | !is.na(KorBB)) |> 
-    summarize(
-      pct = {
-        total_PA <- n()
-        strikeouts <- sum(
-          PlayResult %in% c("StrikeoutLooking", "StrikeoutSwinging"), na.rm = TRUE
-        )
-      if(total_PA == 0) 0 else strikeouts / total_PA
-      }
-    ) |> 
-    pull(pct)
-  
-  bbPct <- df |> 
-    filter(!is.na(PlayResult) | !is.na(KorBB)) |>
-    summarize(pct = sum(KorBB == "Walk", na.rm = TRUE) / n()) |> 
-    pull(pct)
-  
-  whiffPct <- df |> 
-    filter(!is.na(PitchCall)) |> 
-    filter(!(PitchCall %in% c("BallCalled", "HitByPitch", "StrikeCalled"))) |> 
-    summarize(pct = mean(PitchCall == "StrikeSwinging")) |> 
-    pull(pct)
-  
-  chasePct <- df |> 
-    filter(IsStrike == FALSE) |> 
-    summarize(pct = mean(IsSwing == TRUE)) |> 
-    pull(pct)
-  
-  groundBallPct <- df |> 
-    filter(!is.na(HitType) & HitType != "Throwdown") |> 
-    summarize(pct = mean(HitType == "GroundBall")) |> 
-    pull(pct)
-  
-  
-}
-```
-
-
 Creating Batter Advanced Stats Dataframe
 ```{r}
 kcl_batter_list <- split(KCLyakkertechData, KCLyakkertechData$Batter)
@@ -217,6 +155,7 @@ belters_advanced_by_batter <- map2_df(
 
 invert_cols <- c("kPct", "whiffPct", "chasePct")
 
+#Create Percentile Columns
 kcl_advanced_by_batter <- kcl_advanced_by_batter |> 
   mutate(
     across(
@@ -251,16 +190,16 @@ belters_advanced_by_batter <- belters_advanced_by_batter |>
 
 ```
 
-Attach basic hitting stats to advanced stats (ONLY FOR KCL)
+Attach basic hitting stats to advanced stats
 ```{r}
-kcl_basicStats_files <- c(
+kcl_basicHitting_files <- c(
   "KCLStats/bluecapsStatsFinal.csv",
   "KCLStats/bobcatsStatsFinal.csv",
   "KCLStats/groundslothsStatsFinal.csv",
   "KCLStats/merchantsStatsFinal.csv"
 )
 
-kcl_basic_stats_dfs <- kcl_basicStats_files |> 
+kcl_basic_stats_dfs <- kcl_basicHitting_files |> 
   map(read_csv)
 
 KCLBasicStats <- bind_rows(kcl_basic_stats_dfs) |> 
@@ -269,32 +208,23 @@ KCLBasicStats <- bind_rows(kcl_basic_stats_dfs) |>
 #write_csv(KCLBasicStats, "KCLBasicStats.csv")
 
 KCLSavantData <- kcl_advanced_by_batter |> 
-  left_join(KCLBasicStats, by = "Batter") |> 
-  select(-GP, -R, -`2B`, -`3B`, -RBI, -TB, -BB, -SO)
+  left_join(KCLBasicStats, by = "Batter")
 
-beltersBasicStats <- read_csv("beltersStats.csv")
-belters_advanced_by_batter <- belters_advanced_by_batter |> 
-  left_join(beltersBasicStats, by = "Batter") |> 
-  select(-Number, -Year, -Position, -GP, -RBI, -BB, -K, -HBP, -SF, -SH, -HDP, -GO, -FO, -"GO/FO", -PA, -`2B`, -`3B`, -XBH) |> 
-  mutate(
-    HR = parse_double(HR),
-    SB = replace_na(SB, 0)
-  ) |> 
-  mutate(
-    HR = replace_na(HR, 0)
-  )
+beltersBasicStats <- read_csv("BeltersStats/beltersHittingFinal.csv")
+BeltersSavantData <- belters_advanced_by_batter |> 
+  left_join(beltersBasicStats, by = "Batter")
 
 ```
 
-Function to calculate advanced reference stats
+Function to calculate advanced reference stats (KCL)
 ```{r}
 #Calculate League OBP and League SLG
-KCLBasicStats <- KCLBasicStats |> 
+KCLSavantData <- KCLSavantData |> 
   mutate(
     `1B` = H - `2B` - `3B` - HR,
   )
 
-leagueSums <- KCLBasicStats |> 
+leagueSums <- KCLSavantData |> 
   summarize(pa_sum = sum(PA),
             ab_sum = sum(AB),
             bb_sum = sum(BB),
@@ -320,46 +250,121 @@ wOBA_Scale <- leagueSums |> pull(wOBA_Scale)
 leagueRunsPerPA <- leagueSums |> pull(runsPerPA)
 
 #Calculate OPS+
-KCLReferenceStats <- KCLBasicStats |> 
+KCLSavantData <- KCLSavantData |> 
   mutate(
     `OPS+` = round(100 * ((OBP / leagueOBP) + (SLG / leagueSLG) - 1),0)
   )
 
 
 #Calculate wOBA
-KCLReferenceStats <- KCLReferenceStats |> 
+KCLSavantData <- KCLSavantData |> 
   mutate(
     wOBA = (.69*BB + .72*HBP + .89*`1B` + 1.27*`2B` + 1.62*`3B` + 2.1*HR) / PA
   )
 
 #Calculate wRC+
-KCLReferenceStats <- KCLReferenceStats |> 
+KCLSavantData <- KCLSavantData |> 
   mutate(
     `wRC+` = round((
       ( (wOBA - leagueWOBA) / wOBA_Scale + leagueRunsPerPA ) / leagueRunsPerPA
     ) * 100,0)
   )
 
+runsPerWin <- 11
 
 #Calculate Offensive WAR
-KCLReferenceStats <- KCLReferenceStats |> 
+KCLSavantData <- KCLSavantData |> 
   mutate(
     wRAA = (wOBA - leagueWOBA) / wOBA_Scale * PA,
     rRAA = (.252 - leagueWOBA) / wOBA_Scale * PA,
     oRAR = wRAA - rRAA,
-    oWAR = oRAR / 11
+    oWAR = oRAR / runsPerWin
   )
 
 #Select Columns We Need
-KCLReferenceStats <- KCLReferenceStats |> 
-  select(-HBP, -`1B`, -wRAA, -rRAA, -oRAR, -AVG, -OBP, -SLG, -OPS, -PA, -AB, -H, -HR, -SB, -CS) |> 
+KCLSavantData <- KCLSavantData |> 
+  select(-`1B`, -wRAA, -rRAA, -oRAR) |> 
   mutate(
     wOBA = round(wOBA,3),
     oWAR = round(oWAR, 1)
   )
 
-KCLSavantData <- KCLSavantData |> 
-  left_join(KCLReferenceStats, by = "Batter")
+
+```
+
+Function to calculate advanced reference stats (Belters)
+```{r}
+#Calculate League OBP and League SLG
+BeltersSavantData <- BeltersSavantData |> 
+  mutate(
+    `1B` = H - `2B` - `3B` - HR,
+    TB = `1B` + (2 * `2B`) + (3 * `3B`) + (4*HR)
+  )
+
+leagueSums <- BeltersSavantData |> 
+  summarize(pa_sum = sum(PA),
+            ab_sum = sum(AB),
+            bb_sum = sum(BB),
+            hbp_sum = sum(HBP),
+            singleSum = sum(`1B`),
+            doubleSum = sum(`2B`),
+            tripleSum = sum(`3B`),
+            hrSum = sum(HR),
+            on_base_sum = sum(H) + sum(BB) + sum(HBP),
+            tb_sum = sum(TB),
+            runsSum = sum(RBI) + 12, #CHANGE FREQUENTLY
+            league_OBP = on_base_sum / pa_sum,
+            league_SLG = tb_sum / ab_sum,
+            league_wOBA = (.69*bb_sum + .72*hbp_sum + .89*singleSum + 1.27*doubleSum + 1.62*tripleSum + 2.1*hrSum) / pa_sum,
+            wOBA_Scale = (.69*bb_sum + .72*hbp_sum + .89*singleSum + 1.27*doubleSum + 1.62*tripleSum + 2.1*hrSum) / runsSum,
+            runsPerPA = runsSum / pa_sum
+  )
+
+leagueOBP <- leagueSums |>  pull(league_OBP)
+leagueSLG <- leagueSums |>  pull(league_SLG)
+leagueWOBA <- leagueSums |>  pull(league_wOBA)
+wOBA_Scale <- leagueSums |> pull(wOBA_Scale)
+leagueRunsPerPA <- leagueSums |> pull(runsPerPA)
+
+#Calculate OPS+
+BeltersSavantData <- BeltersSavantData |> 
+  mutate(
+    `OPS+` = round(100 * ((OBP / leagueOBP) + (SLG / leagueSLG) - 1),0)
+  )
+
+
+#Calculate wOBA
+BeltersSavantData <- BeltersSavantData |> 
+  mutate(
+    wOBA = (.69*BB + .72*HBP + .89*`1B` + 1.27*`2B` + 1.62*`3B` + 2.1*HR) / PA
+  )
+
+#Calculate wRC+
+BeltersSavantData <- BeltersSavantData |> 
+  mutate(
+    `wRC+` = round((
+      ( (wOBA - leagueWOBA) / wOBA_Scale + leagueRunsPerPA ) / leagueRunsPerPA
+    ) * 100,0)
+  )
+
+runsPerWin <- 11
+
+#Calculate Offensive WAR
+BeltersSavantData <- BeltersSavantData |> 
+  mutate(
+    wRAA = (wOBA - leagueWOBA) / wOBA_Scale * PA,
+    rRAA = (.252 - leagueWOBA) / wOBA_Scale * PA,
+    oRAR = wRAA - rRAA,
+    oWAR = oRAR / runsPerWin
+  )
+
+#Select Columns We Need
+BeltersSavantData <- BeltersSavantData |> 
+  select(-`1B`, -wRAA, -rRAA, -oRAR) |> 
+  mutate(
+    wOBA = round(wOBA,3),
+    oWAR = round(oWAR, 1)
+  )
 
 
 ```
@@ -379,7 +384,12 @@ corrections <- c(
   "Kannan Kleine" = "Kannon Kleine",
   "Nolan Mccrossin" = "Nolan McCrossin",
   "Luke Mcclure" = "Luke McClure",
-  "Brandown Ward" = "Brandon Ward"
+  "Brandown Ward" = "Brandon Ward",
+  "Cameron Heinold" = "Camden Heinold",
+  "Sammy Driscoll" = "Sam Driscoll",
+  "Roy Rolston" = "Roy Ralston",
+  "Tyson Sorenson" = "Tysen Sorenson",
+  "Chase Peterson" = "Chase Petersen"
 )
 
 fixNames <- function(df, column, lookup){
@@ -410,20 +420,20 @@ xWOBA_2 <- read_csv("YakkertechData/xWOBA_CornBelters/xWOBA_Data_Belters.csv") |
 
 #xWOBA_2 <- fixNames(xWOBA_2, "Batter", corrections)
 
-BeltersSavantData <- belters_advanced_by_batter |> 
+BeltersSavantData <- BeltersSavantData |> 
   left_join(xWOBA_2, by = "Batter")
 ```
 Create Leaderboards
 ```{r}
-basicLeaderboard <- KCLSavantData |> 
-  select(Batter, PA, AB, H, `2B`, `3B`, HR, SB, AVG, OBP, SLG, OPS, wOBA, `wRC+`, oWAR)
-
-advancedLeaderboard <- KCLSavantData |> 
-  select(Batter, PA, avgExitVelo, maxExitVelo, LASweetSpot, hardHitPct, squaredUpPct, kPct, bbPct, whiffPct, chasePct,
-         xBA, xSLG, xWOBA, xBABIP)
-
-
-
+# basicLeaderboard <- KCLSavantData |> 
+#   select(Batter, PA, AB, H, `2B`, `3B`, HR, SB, AVG, OBP, SLG, OPS, wOBA, `wRC+`, oWAR)
+# 
+# advancedLeaderboard <- KCLSavantData |> 
+#   select(Batter, PA, avgExitVelo, maxExitVelo, LASweetSpot, hardHitPct, squaredUpPct, kPct, bbPct, whiffPct, chasePct,
+#          xBA, xSLG, xWOBA, xBABIP)
+# 
+# 
+# 
 
 ```
 
@@ -432,9 +442,9 @@ advancedLeaderboard <- KCLSavantData |>
 Save Savant Data
 ```{r}
 savantData <- bind_rows(KCLSavantData, BeltersSavantData)
-write_csv(KCLSavantData, "KCLSavantData.csv")
-write_csv(BeltersSavantData, "BeltersSavantData.csv")
-write_csv(savantData, "SavantData.csv")
+write_csv(KCLSavantData, "KCLHitterSavantData.csv")
+write_csv(BeltersSavantData, "BeltersHitterSavantData.csv")
+write_csv(savantData, "HitterSavantData.csv")
 ```
 
 
@@ -447,6 +457,40 @@ yakkertechData |>
   arrange(desc(PitchSpeed))
 ```
 
+
+```{r}
+test <- yakkertechData |> 
+  filter(Batter == "Jake Parpet") |> 
+  filter(!is.na(PlayResult)) |> 
+  summarise(mean = mean(predicted_xwoba))
+```
+
+```{r}
+test<- KCLyakkertechData |> 
+  filter(Catcher == "Will Vogel")
+
+strike_zone <- test %>%
+  filter(!is.na(PlateLocSide) & !is.na(PlateLocHeight)
+         & PitchCall %in% c("StrikeCalled", "BallCalled")) %>%
+  mutate(xZone = case_when(
+    PlateLocSide <= 1.3333 & PlateLocSide >= 1 ~ 0,
+    PlateLocSide < 1 & PlateLocSide >= .3333 ~ 1,
+    PlateLocSide < .3333 & PlateLocSide >= -.3333 ~ 2,
+    PlateLocSide < -.3333 & PlateLocSide >= -1 ~ 3,
+    PlateLocSide < -1 & PlateLocSide >= -1.3333 ~ 4
+  )) %>%
+  mutate(yZone = case_when(
+    PlateLocHeight >= .84 & PlateLocHeight <= 1.5 ~ 0,
+    PlateLocHeight > 1.5 & PlateLocHeight <= 2.17 ~ 1,
+    PlateLocHeight > 2.17 & PlateLocHeight <= 2.83 ~ 2,
+    PlateLocHeight > 2.83 & PlateLocHeight <= 3.5 ~ 3,
+    PlateLocHeight > 3.5 & PlateLocHeight <= 4.16 ~ 4
+  )) %>%
+  mutate(CalledStrike = if_else(PitchCall == "StrikeCalled",1,0))
+
+  strike_zone <- strike_zone %>%
+    filter(!is.na(xZone) & !is.na(yZone))
+```
 
 
 

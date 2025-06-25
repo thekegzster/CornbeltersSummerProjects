@@ -38,9 +38,9 @@ plotRollingXWOBA <- function(data, batterName){
       size = 1.2
     ) +
     scale_colour_gradientn(
-      limits = c(0.1, 0.5),
+      limits = c(0.15, 0.5),
       colours = c("blue", "lightblue", "gray", "lightcoral", "red"),
-      values  = rescale(c(0.1, 0.2, 0.32, 0.4, 0.5)),
+      values  = rescale(c(0.15, 0.24, 0.32, 0.38, 0.48)),
       oob     = squish,
       guide   = "none"
     ) +

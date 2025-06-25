@@ -59,7 +59,7 @@ sprayChartUI <- function(id) {
       flex-direction: row;
       gap: 10px;
       background: #f9f9f9;
-      padding: 10px;
+      padding: 2px;
       border: 1px solid #ccc;
       border-radius: 8px;
     ",

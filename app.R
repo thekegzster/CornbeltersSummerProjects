@@ -3,20 +3,47 @@ library(tidyverse)
 library(rlang)
 
 # Put all the R files here
+
+#Hitting Files
 source("zoneChartModule.R")
 source("SprayChart.R")
-source("advancedStatsModule.R")
-source("basicStatsModule.R")
-source("referenceStats.R")
+source("advancedStatsHittingModule.R")
+source("basicStatsModuleHitting.R")
+source("referenceHittingStats.R")
 source("rollingXWOBAModule.R")
+source("Batted_Ball_Profiles.R")
+source("plateDisciplineModule.R")
+source("pitchTrackingBatters.R")
+source("Catcher_Defense.R")
+
+#Pitching Files
+source("advancedStatsPitchingModule.R")
+source("basicStatsModulePitching.R")
+source("referencePitchingStats.R")
+source("pitchDetailsModule.R")
+source("pitchDetailsTableModule.R")
+source("pitchTrackingPitchers.R")
 
 
 # Load data
-YakkertechData <- read_csv("yakkertechData.csv")
-AdvancedData <- read_csv("SavantData.csv")
+KCLYakkertechData <- read_csv("KCLYakkertechData.csv")
+BeltersHitterYakkertechData <- read_csv("BeltersHitterYakkertechData.csv")
+BeltersPitcherYakkertechData <- read_csv("BeltersPitcherYakkertechData.csv")
+
+YakkertechHitterData <- bind_rows(KCLYakkertechData, BeltersHitterYakkertechData)
+YakkertechPitcherData <- bind_rows(KCLYakkertechData, BeltersPitcherYakkertechData)
+
+hitters  <- unique(YakkertechHitterData$Batter)
+pitchers <- unique(YakkertechPitcherData$Pitcher)
+roster <- sort(union(hitters, pitchers))
+
+#Savant Data
+AdvancedHittingData <- read_csv("HitterSavantData.csv")
+AdvancedPitchingData <- read_csv("PitcherSavantData.csv")
 
 playerDetails <- read_csv("playerDetails.csv")
-
+pitchTrackingBatter <- read_csv("YakkertechData/BaseballSavant/batters (pitch tracking).csv")
+pitchTrackingPitcher <- read_csv("YakkertechData/Baseballsavant_Pitcher/pitchers (pitch tracking).csv")
 
 # UI
 ui <- fluidPage(
@@ -56,7 +83,7 @@ ui <- fluidPage(
         )
       ),
       
-      # Team Logo and Team Name
+      # Team Logo
       absolutePanel(
         top   = "0%",
         right = "2%",
@@ -64,56 +91,7 @@ ui <- fluidPage(
         uiOutput("teamDisplay")
       ),
       
-      # Basic Stats Panel
-      absolutePanel(
-        top    = "13%", 
-        left   = "2%",
-        width  = "27%",
-        basicStatsUI("profileChart")
-      ),
-      
-      # Advanced Stats
-      absolutePanel(
-        top    = "5%", 
-        bottom = "2%",
-        left   = "30%",   
-        width  = "35%", 
-        advancedStatsUI("advancedChart")
-      ),
-      
-      # Rolling XWOBA
-      absolutePanel(
-        top = "61%",
-        bottom = "2%",
-        left   = "2%",   
-        width  = "27%", 
-        rollingXWOBAUI("rollingChart")
-      ),
-      
-      # Zone & Spray Chart
-      tags$div(
-        style = "
-          position: absolute;
-          bottom: 2%;
-          right: 2%;
-          width: 34%;
-          max-width: 500px;
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        ",
-        sprayChartUI("sprayChart"),
-        zoneChartUI("zoneChart")
-      )
-    ),
-    
-    # Scrollable section below fixed panels
-    div(
-      style = "
-        margin-top: 0vh;
-        padding: 20px 5%;
-      ",
-      referenceStatsUI("refStats")
+      uiOutput("mainContent")
     )
   )
 )
@@ -152,7 +130,8 @@ server <- function(input, output, session) {
     updateSelectInput(
       session,
       "selected_player",
-      choices = unique(filtered_data()$Batter)
+      choices  = roster,
+      selected = roster[1]
     )
   })
   
@@ -178,12 +157,20 @@ server <- function(input, output, session) {
       slice(1)
   })
   
-  #Get basic stats
-  player_stats <- reactive({
+  #Get basic hitting stats
+  player_hitting_stats <- reactive({
     req(selected_player())
-    AdvancedData %>%
+    AdvancedHittingData %>%
       filter(Batter == selected_player()) %>%
       select(AB, H, HR, SB, AVG, OBP, SLG, OPS)
+  })
+  
+  #Get basic pitching stats
+  player_pitching_stats <- reactive({
+    req(selected_player())
+    AdvancedPitchingData %>%
+      filter(Pitcher == selected_player()) %>%
+      select(W, L, ERA, G, GS, SV, IP, SO, WHIP)
   })
   
   #Get player photos
@@ -223,55 +210,307 @@ server <- function(input, output, session) {
     )
   })
   
-  #Get basic stats server
-  basicStatsServer(
-    id           = "profileChart",
+  
+  output$mainContent <- renderUI({
+    req(input$selected_player)
+    player <- input$selected_player
+    isHit    <- player %in% hitters
+    isPitch  <- player %in% pitchers
+    
+    tabs <- list()
+    
+    if (isHit) {
+      tabs <- append(tabs, list(
+        tabPanel("Hitting",
+                 # Basic Stats Panel
+                 absolutePanel(
+                   top    = "13%", 
+                   left   = "2%",
+                   width  = "27%",
+                   basicStatsHittingUI("profileHitting")
+                 ),
+                 # Advanced Stats
+                 absolutePanel(
+                   top    = "5%", 
+                   bottom = "2%",
+                   left   = "30%",   
+                   width  = "35%", 
+                   advancedStatsHittingUI("advancedHitting")
+                 ),
+                 # Rolling XWOBA
+                 absolutePanel(
+                   top = "61%",
+                   bottom = "2%",
+                   left   = "2%",   
+                   width  = "27%", 
+                   rollingXWOBAUI("rollingChart")
+                 ),
+                 # Zone & Spray Chart / Catcher Defense
+                 absolutePanel(
+                   bottom    = "2%",
+                   right     = "2%",
+                   width     = "32%",
+                   `max-width` = "500px",
+                   uiOutput("defenseTabsUI")
+                 ),
+                 # Scrollable section below fixed panels
+                 absolutePanel(
+                   top    = "100%",
+                   left   = "2%",
+                   right  = "2%",
+                   style  = "overflow-y: auto; padding: 20px 5%;",
+                   referenceHittingStatsUI("refHitting"),
+                   br(),
+                   battedBallProfileUI("battedProfile"),
+                   br(),
+                   plateDisciplineUI("plateDiscipline"),
+                   br(),
+                   pitchTrackingBatterUI("pitchTrackingBatter")
+                 )
+        )
+      ))
+    }
+    
+    # — Pitching tab —
+    if (isPitch) {
+      tabs <- append(tabs, list(
+        tabPanel("Pitching",
+                 # Basic Stats Panel
+                 absolutePanel(
+                   top    = "13%", 
+                   left   = "2%",
+                   width  = "27%",
+                   basicStatsPitchingUI("profilePitching")
+                 ),
+                 # Advanced Stats
+                 absolutePanel(
+                   top    = "5%", 
+                   bottom = "2%",
+                   left   = "30%",   
+                   width  = "35%", 
+                   advancedStatsPitchingUI("advancedPitching")
+                 ),
+                 #Pitch Details Plot
+                 absolutePanel(
+                   right = "2%",
+                   top = "15%",
+                   height = "65%",
+                   width = "32%",
+                   pitchDetailsUI("pitchDetails")
+                 ),
+                 #Pitch Details Table
+                 absolutePanel(
+                   right = "2%",
+                   top = "82%",
+                   height = "10%",
+                   width = "32%",
+                   pitchDetailsTableUI("pitchDetailsTable")
+                 ),
+                 # Scrollable section below fixed panels
+                 absolutePanel(
+                   top    = "100%",
+                   left   = "2%",
+                   right  = "2%",
+                   style  = "overflow-y: auto; padding: 10px 0%;",
+                   referencePitchingStatsUI("refPitching"),
+                   br(),
+                   pitchTrackingPitcherUI("pitchTrackingPitcher")
+                 )
+        )
+      ))
+    }
+    
+    # If no tabs, show a placeholder
+    if (length(tabs) == 0) {
+      div("No data available for this player.")
+    } else {
+      do.call(tabsetPanel, c(
+        list(id = "main_tabs", type = "tabs"),
+        tabs
+      ))
+    }
+  })
+  
+  
+  #Get basic hitting stats server
+  basicHittingStatsServer(
+    id           = "profileHitting",
     details_df   = player_details,
-    stats_df     = player_stats,
+    stats_df     = player_hitting_stats,
     action_img   = action_photo,
     headshot_img = headshot_photo
   )
   
-  #Reference Stats Server
-  referenceStatsServer(
-    id = "refStats",
+  #Get basic stats server
+  basicPitchingStatsServer(
+    id           = "profilePitching",
+    details_df   = player_details,
+    stats_df     = player_pitching_stats,
+    action_img   = action_photo,
+    headshot_img = headshot_photo
+  )
+  
+  #Reference Hitting Stats Server
+  referenceHittingStatsServer(
+    id = "refHitting",
     stats_df = reactive({
-      AdvancedData %>%
+      AdvancedHittingData %>%
         filter(Batter == selected_player())
     })
+  )
+  
+  #Reference Pitching Stats Server
+  referencePitchingStatsServer(
+    id = "refPitching",
+    stats_df = reactive({
+      AdvancedPitchingData %>%
+        filter(Pitcher == selected_player())
+    })
+  )
+  
+  #Batted Ball Profile Server
+  battedBallProfileServer(
+    id = "battedProfile",
+    data = reactive({
+      YakkertechHitterData |> 
+        filter(Batter == selected_player())
+    })
+  )
+  
+  #Plate Discipline Server
+  plateDisciplineServer(
+    id = "plateDiscipline",
+    data = reactive({
+      YakkertechHitterData |> 
+        filter(Batter == selected_player())
+    })
+  )
+  
+  #Pitch Tracking Server (Hitters)
+  pitchTrackingBatterServer(
+    id = "pitchTrackingBatter",
+    data = reactive({
+      pitchTrackingBatter |> 
+        filter(Batter == selected_player())
+    })
+  )
+  
+  #Pitch Tracking Server (Pitchers)
+  pitchTrackingPitcherServer(
+    id = "pitchTrackingPitcher",
+    data = reactive(pitchTrackingPitcher),
+    pitcherName = selected_player
   )
   
   #Get Rolling XWOBA Plot
   rollingXWOBAServer(
     id          = "rollingChart",
-    data_source = reactive(YakkertechData),
+    data_source = reactive(YakkertechHitterData),
     player_name = selected_player
   )
   
-  #Get advanced stats plot
-  advancedStatsServer(
-    id          = "advancedChart",
-    data_source = reactive(AdvancedData),
+  #Get advanced hitting stats plot
+  advancedStatsHittingServer(
+    id          = "advancedHitting",
+    data_source = reactive(AdvancedHittingData),
     player_name = selected_player,
     stat_cols = c("avgExitVelo", "maxExitVelo", "LASweetSpot", "hardHitPct", "squaredUpPct",
                   "kPct", "bbPct", "whiffPct", "chasePct", "xBA", "xSLG", "xWOBA", "xWOBA_2",
                   "xBABIP", "babip")
   )
   
+  #Get advanced pitching stats plot
+  advancedStatsPitchingServer(
+    id          = "advancedPitching",
+    data_source = reactive(AdvancedPitchingData),
+    player_name = selected_player,
+    stat_cols = c("xERA", "xBA", "FastballVelo", "avgExitVelo", "chasePct", "whiffPct",
+                  "kPct", "bbPct", "hardHitPct", "groundBallPct")
+  )
+  
   #Get zone chart plot
   zoneChartServer(
     id          = "zoneChart",
-    data        = reactive(YakkertechData),
+    data        = reactive(YakkertechHitterData),
     player_name = selected_player
   )
   
   #Get spray chart plot
   sprayChartServer(
     id          = "sprayChart",
-    data        = reactive(YakkertechData),
+    data        = reactive(YakkertechHitterData),
     player_name = selected_player
   )
+  
+  #Get pitch details plot
+  pitchDetailsServer(
+    id = "pitchDetails",
+    data_source = reactive(YakkertechPitcherData),
+    player_name = selected_player
+  )
+  
+  #Get pitch details table
+  pitchDetailsTableServer(
+    id = "pitchDetailsTable",
+    data_source = reactive(YakkertechPitcherData),
+    player_name = selected_player
+  )
+  
+  #Get catcher framing plot
+  CatcherFramingServer(
+    id          = "catcherFramingChart",
+    data        = reactive(YakkertechPitcherData),
+    player_name = selected_player,
+    league = reactive({
+      team <- YakkertechPitcherData |> 
+        filter(Catcher == input$selected_player) |> 
+        pull(CatcherTeam) |> 
+        unique()
+      paste(team)
+      if (startsWith(team, "Kcl")) {
+        "Kcl"
+      } else {
+        "Prospect"
+      }
+    })
+  )
+  
+  # 2) Dynamically build the tabs:
+  output$defenseTabsUI <- renderUI({
+    req(input$selected_player)
+    
+    # base tab: Zone & Spray
+    tabs <- list(
+      tabPanel(
+        "Zone & Spray",
+        tags$div(
+          style = "display: flex; flex-direction: column; gap: 15px;",
+          sprayChartUI("sprayChart"),
+          zoneChartUI("zoneChart")
+        )
+      )
+    )
+    
+    catchers <- unique(YakkertechPitcherData$Catcher)
+    if (input$selected_player %in% catchers) {
+      tabs <- append(tabs,
+                     list(
+                       tabPanel(
+                         "Catcher Framing",
+                         CatcherFramingUI("catcherFramingChart")
+                       )
+                     )
+      )
+    }
+    
+    do.call(tabsetPanel, c(
+      list(id = "defense_tabs", type = "tabs"),
+      tabs
+    ))
+  })
 }
+    
+
 
 # Launch the app
 shinyApp(ui = ui, server = server)
