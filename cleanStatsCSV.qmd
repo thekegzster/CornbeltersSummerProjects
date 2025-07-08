@@ -111,7 +111,7 @@ bluecapsStats <- bluecapsStats |>
     Name = paste0(First, " ", Last)
   ) |> 
   select(-First, -Last) |> 
-  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, HBP, WP, WHIP, FIP, ERA) |> 
   mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
   filter(GP > 0) |> 
   filter(!str_detect(Name, "HR")) |> 
@@ -139,7 +139,7 @@ bobcatsStats <- bobcatsStats |>
     Name = paste0(First, " ", Last)
   ) |> 
   select(-First, -Last) |> 
-  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, HBP, WP, WHIP, FIP, ERA) |> 
   mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
   filter(GP > 0) |> 
   filter(!str_detect(Name, "HR")) |> 
@@ -167,7 +167,7 @@ groundslothsStats <- groundslothsStats |>
     Name = paste0(First, " ", Last)
   ) |> 
   select(-First, -Last) |> 
-  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP, ERA) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, HBP, WP, WHIP, FIP, ERA) |> 
   mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
   filter(GP > 0) |> 
   filter(!str_detect(Name, "HR")) |> 
@@ -195,7 +195,7 @@ merchantsStats <- merchantsStats |>
     Name = paste0(First, " ", Last)
   ) |> 
   select(-First, -Last) |> 
-  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, WHIP, FIP) |> 
+  select(Name, GP, GS, W, L, SV, IP, H, R, ER, HR, BB, SO, HBP, WP, WHIP, FIP) |> 
   mutate(across(c(IP, H, BB, ER, WHIP, FIP), as.numeric)) |> 
   filter(GP > 0) |> 
   filter(!str_detect(Name, "HR")) |> 
@@ -291,6 +291,76 @@ merchantsStats[nrow(merchantsStats), 1] <- "Total"
 merchantsStats <- merchantsStats |> 
   filter(Name != "NA NA")
 write_csv(merchantsStats, "KCLStats/merchantsStatsFieldingFinal.csv")
+```
+
+###########################################################################
+Clean Belters Stats
+###########################################################################
+
+Belters Hitting and Base Running
+```{r}
+beltersBaseRunning <- read_csv("BeltersStats/beltersBaserunningRaw.csv") |> 
+  mutate(
+    Name = str_squish(Name),
+    Batter = Name,
+    SB = sb,
+    CS = coalesce(as.numeric(cs),0)
+  ) |> 
+  select(Batter, SB, CS)
+beltersHitting <- read_csv("BeltersStats/beltersHittingRaw.csv") |> 
+  mutate(
+    Name = str_squish(Name),
+    Batter = Name,
+    BB = coalesce(as.numeric(bb),0),
+    HBP = coalesce(as.numeric(hbp),0),
+    `2B` = coalesce(as.numeric(`2b`),0),
+    `3B` = coalesce(as.numeric(`3b`),0),
+    HR = coalesce(as.numeric(hr),0),
+    SO = k,
+    GP = gp,
+    AB = ab,
+    H = h,
+    RBI = rbi,
+    AVG = avg,
+    OBP = obp,
+    SLG = slg,
+    OPS = OBP + SLG,
+    PA = pa
+  ) |> 
+  select(Batter, GP, PA, AB, H, `2B`, `3B`, HR, RBI, BB, SO, HBP, AVG, OBP, SLG, OPS) |> 
+  left_join(beltersBaseRunning, by = "Batter") |> 
+  mutate(
+    SB = coalesce(SB, 0),
+    CS = coalesce(CS, 0)
+    )
+write_csv(beltersHitting, "BeltersStats/beltersHittingFinal.csv")
+
+```
+Belters Pitching
+```{r}
+beltersPitching <- read_csv("BeltersStats/beltersPitchingRaw.csv") |> 
+  mutate(
+    Name = str_squish(Name),
+    Pitcher = Name,
+    ERA = era,
+    W = coalesce(as.numeric(w), 0),
+    L = coalesce(as.numeric(l), 0),
+    G = coalesce(as.numeric(app), 0),
+    GS = coalesce(as.numeric(gs), 0),
+    SV = coalesce(as.numeric(sv), 0),
+    IP = ip,
+    H = coalesce(as.numeric(h), 0),
+    R = coalesce(as.numeric(r), 0),
+    ER = coalesce(as.numeric(er), 0),
+    BB = coalesce(as.numeric(bb), 0),
+    SO = coalesce(as.numeric(k), 0),
+    HR = coalesce(as.numeric(hr), 0),
+    WHIP = coalesce(as.numeric(whip), 0),
+    WP = coalesce(as.numeric(wp), 0),
+    HBP = coalesce(as.numeric(hbp), 0)
+  ) |> 
+  select(Pitcher, W, L, ERA, G, GS, SV, IP, H, R, ER, HR, BB, SO, HBP, WP, WHIP)
+write_csv(beltersPitching, "BeltersStats/beltersPitchingFinal.csv")
 ```
 
 

@@ -69,7 +69,7 @@ getAdvancedHitting <- function(df, name){
   
   whiffPct <- df |> 
     filter(!is.na(PitchCall)) |> 
-    filter(!(PitchCall %in% c("BallCalled", "HitByPitch", "StrikeCalled"))) |> 
+    filter(IsSwing == TRUE) |> 
     summarize(pct = mean(PitchCall == "StrikeSwinging")) |> 
     pull(pct)
   
@@ -463,33 +463,6 @@ test <- yakkertechData |>
   filter(Batter == "Jake Parpet") |> 
   filter(!is.na(PlayResult)) |> 
   summarise(mean = mean(predicted_xwoba))
-```
-
-```{r}
-test<- KCLyakkertechData |> 
-  filter(Catcher == "Will Vogel")
-
-strike_zone <- test %>%
-  filter(!is.na(PlateLocSide) & !is.na(PlateLocHeight)
-         & PitchCall %in% c("StrikeCalled", "BallCalled")) %>%
-  mutate(xZone = case_when(
-    PlateLocSide <= 1.3333 & PlateLocSide >= 1 ~ 0,
-    PlateLocSide < 1 & PlateLocSide >= .3333 ~ 1,
-    PlateLocSide < .3333 & PlateLocSide >= -.3333 ~ 2,
-    PlateLocSide < -.3333 & PlateLocSide >= -1 ~ 3,
-    PlateLocSide < -1 & PlateLocSide >= -1.3333 ~ 4
-  )) %>%
-  mutate(yZone = case_when(
-    PlateLocHeight >= .84 & PlateLocHeight <= 1.5 ~ 0,
-    PlateLocHeight > 1.5 & PlateLocHeight <= 2.17 ~ 1,
-    PlateLocHeight > 2.17 & PlateLocHeight <= 2.83 ~ 2,
-    PlateLocHeight > 2.83 & PlateLocHeight <= 3.5 ~ 3,
-    PlateLocHeight > 3.5 & PlateLocHeight <= 4.16 ~ 4
-  )) %>%
-  mutate(CalledStrike = if_else(PitchCall == "StrikeCalled",1,0))
-
-  strike_zone <- strike_zone %>%
-    filter(!is.na(xZone) & !is.na(yZone))
 ```
 
 

@@ -15,6 +15,8 @@ source("Batted_Ball_Profiles.R")
 source("plateDisciplineModule.R")
 source("pitchTrackingBatters.R")
 source("Catcher_Defense.R")
+source("gameLogsHitting.R")
+source("gameScoreHitting.R")
 
 #Pitching Files
 source("advancedStatsPitchingModule.R")
@@ -23,6 +25,7 @@ source("referencePitchingStats.R")
 source("pitchDetailsModule.R")
 source("pitchDetailsTableModule.R")
 source("pitchTrackingPitchers.R")
+source("gameLogsPitching.R")
 
 
 # Load data
@@ -32,6 +35,7 @@ BeltersPitcherYakkertechData <- read_csv("BeltersPitcherYakkertechData.csv")
 
 YakkertechHitterData <- bind_rows(KCLYakkertechData, BeltersHitterYakkertechData)
 YakkertechPitcherData <- bind_rows(KCLYakkertechData, BeltersPitcherYakkertechData)
+
 
 hitters  <- unique(YakkertechHitterData$Batter)
 pitchers <- unique(YakkertechPitcherData$Pitcher)
@@ -99,7 +103,7 @@ ui <- fluidPage(
 # Server
 server <- function(input, output, session) {
   # Process Login Info
-  permissions <- c("bobcats8729", "groundsloths4528", "merchants9253", "bluecaps0827", "admin1928")
+  permissions <- c("bobcats8729", "groundsloths4528", "merchants9253", "bluecaps0827", "admin1")
   
   login_status <- reactiveVal(FALSE)
   
@@ -116,12 +120,12 @@ server <- function(input, output, session) {
   filtered_data <- reactive({
     req(input$user)
     if(tolower(input$user) != "admin"){
-      YakkertechData %>%
+      YakkertechHitterData %>%
         filter(BatterTeam == paste("Kcl", tolower(input$user), "2025")) |> 
         arrange(Batter)
     }
     else{
-      YakkertechData |> 
+      YakkertechHitterData |> 
         arrange(Batter)
     }
   })
@@ -153,30 +157,30 @@ server <- function(input, output, session) {
         college    = College,
         side       = Side,
         team       = Team
-      ) %>%
+      ) |> 
       slice(1)
   })
   
   #Get basic hitting stats
   player_hitting_stats <- reactive({
     req(selected_player())
-    AdvancedHittingData %>%
-      filter(Batter == selected_player()) %>%
+    AdvancedHittingData |> 
+      filter(Batter == selected_player()) |> 
       select(AB, H, HR, SB, AVG, OBP, SLG, OPS)
   })
   
   #Get basic pitching stats
   player_pitching_stats <- reactive({
     req(selected_player())
-    AdvancedPitchingData %>%
-      filter(Pitcher == selected_player()) %>%
+    AdvancedPitchingData |> 
+      filter(Pitcher == selected_player()) |> 
       select(W, L, ERA, G, GS, SV, IP, SO, WHIP)
   })
   
   #Get player photos
   action_photo <- reactive({
     normalizePath(
-      file.path("www", "actions", paste0(selected_player(), "_action.jpg")),
+      file.path("www", "actions", paste0(selected_player(), "_action.png")),
       mustWork = FALSE
     )
   })
@@ -210,7 +214,6 @@ server <- function(input, output, session) {
     )
   })
   
-  
   output$mainContent <- renderUI({
     req(input$selected_player)
     player <- input$selected_player
@@ -220,14 +223,20 @@ server <- function(input, output, session) {
     tabs <- list()
     
     if (isHit) {
+      dates <- YakkertechHitterData |> 
+        filter(Batter == player) |> 
+        pull(Date) |> 
+        unique() |> 
+        sort()
+      
       tabs <- append(tabs, list(
-        tabPanel("Hitting",
+        tabPanel("Batting",
                  # Basic Stats Panel
                  absolutePanel(
                    top    = "13%", 
                    left   = "2%",
                    width  = "27%",
-                   basicStatsHittingUI("profileHitting")
+                   basicStatsHittingUI("profileHitting_main")
                  ),
                  # Advanced Stats
                  absolutePanel(
@@ -269,10 +278,60 @@ server <- function(input, output, session) {
                  )
         )
       ))
+      
+      #Game Log Hitting Tab
+      tabs <- append(tabs, list(
+        tabPanel("Batting Game Logs",
+                 # Basic Stats Panel
+                 absolutePanel(
+                   top    = "13%", 
+                   left   = "2%",
+                   width  = "27%",
+                   basicStatsHittingUI("profileHitting_logs")
+                 ),
+                 div(
+                   style = "display: flex; justify-content: center; margin: 20px 0;",
+                   selectInput(
+                     inputId = "gameDate",
+                     label   = "Choose game date:",
+                     choices = dates,
+                     selected = tail(dates, 1),
+                     width   = "300px"
+                   )
+                 ),
+                 div(
+                   style = "padding-left: 30%; padding-right: 5%;",
+                   gameLogHittingUI("gameLogHitting")
+                 ),
+                 #Game Score Panel
+                 div(
+                   style = "
+                    position: absolute;
+                    bottom: 2%;
+                    left: 2%;
+                    width: 27vw;
+                    height: 36vh;
+                    padding: 2;
+                    margin: 0;
+                    border-radius: 12px;
+                  ",
+                   gameScoreHittingUI("gameScoreHitting")
+                 )
+                 
+        )
+      ))
     }
+    
+    
     
     # — Pitching tab —
     if (isPitch) {
+      dates <- YakkertechPitcherData |> 
+        filter(Pitcher == player) |> 
+        pull(Date) |> 
+        unique() |> 
+        sort()
+      
       tabs <- append(tabs, list(
         tabPanel("Pitching",
                  # Basic Stats Panel
@@ -280,7 +339,7 @@ server <- function(input, output, session) {
                    top    = "13%", 
                    left   = "2%",
                    width  = "27%",
-                   basicStatsPitchingUI("profilePitching")
+                   basicStatsPitchingUI("profilePitching_main")
                  ),
                  # Advanced Stats
                  absolutePanel(
@@ -302,7 +361,7 @@ server <- function(input, output, session) {
                  absolutePanel(
                    right = "2%",
                    top = "82%",
-                   height = "10%",
+                   height = "15%",
                    width = "32%",
                    pitchDetailsTableUI("pitchDetailsTable")
                  ),
@@ -318,7 +377,36 @@ server <- function(input, output, session) {
                  )
         )
       ))
+      
+      #Game Log Pitching Tab
+      tabs <- append(tabs, list(
+        tabPanel("Pitching Game Logs",
+                 # Basic Stats Panel
+                 absolutePanel(
+                   top    = "13%", 
+                   left   = "2%",
+                   width  = "27%",
+                   basicStatsPitchingUI("profilePitching_logs")
+                 ),
+                 div(
+                   style = "display: flex; justify-content: center; margin: 20px 0;",
+                   selectInput(
+                     inputId = "gameDate",
+                     label   = "Choose game date:",
+                     choices = dates,
+                     selected = tail(dates, 1),
+                     width   = "300px"
+                   )
+                 ),
+                 div(
+                   style = "padding-left: 30%; padding-right: 5%;",
+                   gameLogPitchingUI("gameLogPitching")
+                 )
+                 
+        )
+      ))
     }
+    
     
     # If no tabs, show a placeholder
     if (length(tabs) == 0) {
@@ -331,19 +419,70 @@ server <- function(input, output, session) {
     }
   })
   
+  output$defenseTabsUI <- renderUI({
+    req(input$selected_player)
+    
+    # base tab: Zone & Spray
+    tabs <- list(
+      tabPanel(
+        "Zone & Spray",
+        tags$div(
+          style = "display: flex; flex-direction: column; gap: 15px;",
+          sprayChartUI("sprayChart"),
+          zoneChartUI("zoneChart")
+        )
+      )
+    )
+    
+    catchers <- unique(YakkertechPitcherData$Catcher)
+    if (input$selected_player %in% catchers) {
+      tabs <- append(tabs,
+                     list(
+                       tabPanel(
+                         "Catcher Framing",
+                         CatcherFramingUI("catcherFramingChart")
+                       )
+                     )
+      )
+    }
+    
+    do.call(tabsetPanel, c(
+      list(id = "defense_tabs", type = "tabs"),
+      tabs
+    ))
+  })
   
-  #Get basic hitting stats server
+  
+  #Get basic hitting stats server (For Hitting Page)
   basicHittingStatsServer(
-    id           = "profileHitting",
+    id           = "profileHitting_main",
     details_df   = player_details,
     stats_df     = player_hitting_stats,
     action_img   = action_photo,
     headshot_img = headshot_photo
   )
   
-  #Get basic stats server
+  #Get basic hitting stats server (For Game Logs Page)
+  basicHittingStatsServer(
+    id           = "profileHitting_logs",
+    details_df   = player_details,
+    stats_df     = player_hitting_stats,
+    action_img   = action_photo,
+    headshot_img = headshot_photo
+  )
+  
+  #Get basic pitching stats server (For Pitching Page)
   basicPitchingStatsServer(
-    id           = "profilePitching",
+    id           = "profilePitching_main",
+    details_df   = player_details,
+    stats_df     = player_pitching_stats,
+    action_img   = action_photo,
+    headshot_img = headshot_photo
+  )
+  
+  #Get basic pitching stats server (For Game Logs Page)
+  basicPitchingStatsServer(
+    id           = "profilePitching_logs",
     details_df   = player_details,
     stats_df     = player_pitching_stats,
     action_img   = action_photo,
@@ -354,7 +493,7 @@ server <- function(input, output, session) {
   referenceHittingStatsServer(
     id = "refHitting",
     stats_df = reactive({
-      AdvancedHittingData %>%
+      AdvancedHittingData |> 
         filter(Batter == selected_player())
     })
   )
@@ -363,7 +502,7 @@ server <- function(input, output, session) {
   referencePitchingStatsServer(
     id = "refPitching",
     stats_df = reactive({
-      AdvancedPitchingData %>%
+      AdvancedPitchingData |> 
         filter(Pitcher == selected_player())
     })
   )
@@ -475,39 +614,38 @@ server <- function(input, output, session) {
     })
   )
   
-  # 2) Dynamically build the tabs:
-  output$defenseTabsUI <- renderUI({
-    req(input$selected_player)
-    
-    # base tab: Zone & Spray
-    tabs <- list(
-      tabPanel(
-        "Zone & Spray",
-        tags$div(
-          style = "display: flex; flex-direction: column; gap: 15px;",
-          sprayChartUI("sprayChart"),
-          zoneChartUI("zoneChart")
-        )
-      )
-    )
-    
-    catchers <- unique(YakkertechPitcherData$Catcher)
-    if (input$selected_player %in% catchers) {
-      tabs <- append(tabs,
-                     list(
-                       tabPanel(
-                         "Catcher Framing",
-                         CatcherFramingUI("catcherFramingChart")
-                       )
-                     )
-      )
-    }
-    
-    do.call(tabsetPanel, c(
-      list(id = "defense_tabs", type = "tabs"),
-      tabs
-    ))
-  })
+  #Get HITTING game logs table
+  gameLogHittingServer(
+    id = "gameLogHitting",
+    data = reactive({
+      YakkertechHitterData |> 
+        filter(Batter == selected_player())
+    }),
+    date = reactive(input$gameDate),
+    stats_df = reactive({
+      AdvancedHittingData |> 
+        filter(Batter == selected_player())
+    })
+  )
+  
+  #Get HITTING game score
+  gameScoreHittingServer(
+    id     = "gameScoreHitting",
+    data   = reactive(YakkertechHitterData),
+    date   = reactive(input$gameDate),
+    batter = selected_player
+  )
+  
+  #Get PITCHING game logs table
+  gameLogPitchingServer(
+    id = "gameLogPitching",
+    data = reactive({
+      YakkertechPitcherData |> 
+        filter(Pitcher == selected_player())
+    }),
+    date = reactive(input$gameDate)
+  )
+  
 }
     
 

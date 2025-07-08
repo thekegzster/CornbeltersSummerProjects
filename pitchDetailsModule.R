@@ -65,7 +65,7 @@ plotPitchDetails <- function(pitcherData, pitcherName){
     geom_vline(xintercept = 0, alpha = .3) +
     geom_hline(yintercept = 0, alpha = .3) +
     geom_point(
-      aes(fill = TaggedPitchType),
+      aes(fill = AutoTaggedPitchType),
       shape  = 21,     
       color  = "black",         
       size   = 4,                

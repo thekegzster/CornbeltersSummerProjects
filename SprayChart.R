@@ -28,7 +28,7 @@ make_spray_chart <- function(df, player_name){
   y_max <- max(c(spray_data$Y_Cord, 400))
   
   p <- ggplot(data = spray_data, aes(x = X_Cord, y = Y_Cord, color = PlayResult)) + 
-    geom_point() + 
+    geom_point(size = 4.392) + 
     scale_color_manual(values = custom_colors) + 
     xlim(-300, 350) + 
     ylim(0,y_max) + 

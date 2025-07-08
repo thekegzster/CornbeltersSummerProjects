@@ -8,6 +8,9 @@ library(tidyverse)
 library(mgcv)
 library(purrr)
 library(zoo)
+library(tidymodels)
+tidymodels_prefer()
+library(mclust)
 library(stringr)
 ```
 
@@ -63,7 +66,9 @@ corrections <- c(
   "Luka Zachman" = "Luka Zakman",
   "Braden Vanderhe" = "Braden Vanderheydt",
   "Jackson  Natanek" = "Jackson Natanek",
-  "Josh  Eisfelder" = "Josh Eisfelder"
+  "Josh  Eisfelder" = "Josh Eisfelder",
+  "Jackson Stnake" = "Jackson Stanek",
+  "Jackson Mcdonal" = "Jackson McDonald"
 )
 
 fixNames <- function(df, column, lookup){
@@ -564,16 +569,43 @@ Add in Predicted xWOBA, xBA, xSLG based on KCL and Cornbelters data
 # BelterspitchXBAData <- read_csv("YakkertechData/BaseballSavant/cornbelters_xba.csv")
 # BelterspitchXSLGData <- read_csv("YakkertechData/BaseballSavant/cornbelters_xslg.csv")
 # 
-# pitchXWOBAData <- read_csv("YakkertechData/BaseballSavant/Pitch_By_Pitch_xWOBA.csv") |> 
+# pitchXWOBAData <- read_csv("YakkertechData/BaseballSavant/Pitch_By_Pitch_xWOBA.csv") |>
 #   select(PitchUUID, xWOBA)
 # pitchXBAData <- bind_rows(KCLpitchXBAData, BelterspitchXBAData)
 # pitchXSLGData <- bind_rows(KCLpitchXSLGData, BelterspitchXSLGData)
 # 
-# KCLyakkertechData |> 
-#   left_join(pitchXWOBAData, by = "PitchUUID") |> 
-#   left_join(pitchXBAData, by = "PitchUUID") |> 
-#   left_join(pitchXSLGData, by = "PitchUUID")
+# KCLyakkertechData <- KCLyakkertechData |>
+#   select(-predicted_xba, -predicted_xslg, -predicted_xwoba) |> 
+#   left_join(pitchXWOBAData, by = "PitchUUID") |>
+#   left_join(pitchXBAData, by = "PitchUUID") |>
+#   left_join(pitchXSLGData, by = "PitchUUID") |> 
+#   rename(
+#     predicted_xba = "xBA",
+#     predicted_xslg = "xSLG",
+#     predicted_xwoba = "xWOBA"
+#   )
 # 
+# BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+#   select(-predicted_xba, -predicted_xslg, -predicted_xwoba) |> 
+#   left_join(pitchXWOBAData, by = "PitchUUID") |>
+#   left_join(pitchXBAData, by = "PitchUUID") |>
+#   left_join(pitchXSLGData, by = "PitchUUID") |> 
+#   rename(
+#     predicted_xba = "xBA",
+#     predicted_xslg = "xSLG",
+#     predicted_xwoba = "xWOBA"
+#   )
+# 
+# BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |> 
+#   select(-predicted_xba, -predicted_xslg, -predicted_xwoba) |> 
+#   left_join(pitchXWOBAData, by = "PitchUUID") |>
+#   left_join(pitchXBAData, by = "PitchUUID") |>
+#   left_join(pitchXSLGData, by = "PitchUUID") |> 
+#   rename(
+#     predicted_xba = "xBA",
+#     predicted_xslg = "xSLG",
+#     predicted_xwoba = "xWOBA"
+#   )
 
 ```
 
@@ -664,6 +696,71 @@ rollingXWOBA <- BeltersHitterYakkertechData |>
 
 BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
   left_join(rollingXWOBA, by = "Index")
+```
+
+Pitch Classifier Model
+```{r}
+
+classifyPitches <- function(df, playerName) {
+  df <- df |> 
+    mutate(TaggedPitchType = factor(TaggedPitchType)) |> 
+    select(Pitcher, RelSpeed, SpinRate, InducedVertBreak, HorzBreak, TaggedPitchType, PitchUUID) |> 
+    filter(Pitcher == playerName) |> 
+    drop_na()
+
+  dataScaled <- scale(df[, c("RelSpeed", "SpinRate", "InducedVertBreak","HorzBreak")])
+  
+  icl_fit <- mclustICL(dataScaled, G = 1:5) 
+  icl_mat <- as.matrix(icl_fit)
+  pos <- which(icl_mat == max(icl_mat, na.rm = TRUE), arr.ind = TRUE)[1, ]
+  bestG <- as.integer(rownames(icl_mat)[pos[1]])
+  bestModel  <- colnames(icl_mat)[pos[2]]
+  
+  final_gmm <- Mclust(dataScaled,
+                      G          = bestG,
+                      modelNames = bestModel)
+  
+  df$cluster <- final_gmm$classification
+  
+  cluster_map <- df |> 
+    count(cluster, TaggedPitchType) |> 
+    group_by(cluster) |> 
+    slice_max(n, with_ties = FALSE) |> 
+    ungroup() |> 
+    select(cluster, AutoTaggedPitchType = TaggedPitchType)
+  
+  df <- df |>
+    left_join(cluster_map, by = "cluster") |> 
+    select(AutoTaggedPitchType, PitchUUID)
+}
+###############KCL
+pitchers <- unique(KCLyakkertechData$Pitcher)
+classify <- map_dfr(
+  pitchers,
+  ~ classifyPitches(KCLyakkertechData, .x)
+)
+KCLyakkertechData <- KCLyakkertechData |> 
+  left_join(classify, by = "PitchUUID")
+
+################Belters Hitters
+pitchers <- unique(BeltersHitterYakkertechData$Pitcher)
+classify <- map_dfr(
+  pitchers,
+  ~ classifyPitches(BeltersHitterYakkertechData, .x)
+)
+BeltersHitterYakkertechData <- BeltersHitterYakkertechData |> 
+  left_join(classify, by = "PitchUUID")
+
+#########################Belters Pitchers (Not working at the moment)
+pitchers <- unique(BeltersPitcherYakkertechData$Pitcher)
+classify <- map_dfr(
+  pitchers,
+  ~ classifyPitches(BeltersPitcherYakkertechData, .x)
+)
+BeltersPitcherYakkertechData <- BeltersPitcherYakkertechData |>
+  left_join(classify, by = "PitchUUID")
+
+#BeltersPitcherYakkertechData |> filter(Pitcher == "Hayden Trier")
 ```
 
 Save Data
