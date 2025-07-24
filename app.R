@@ -15,8 +15,6 @@ source("Batted_Ball_Profiles.R")
 source("plateDisciplineModule.R")
 source("pitchTrackingBatters.R")
 source("Catcher_Defense.R")
-source("gameLogsHitting.R")
-source("gameScoreHitting.R")
 
 #Pitching Files
 source("advancedStatsPitchingModule.R")
@@ -25,7 +23,11 @@ source("referencePitchingStats.R")
 source("pitchDetailsModule.R")
 source("pitchDetailsTableModule.R")
 source("pitchTrackingPitchers.R")
-source("gameLogsPitching.R")
+
+#Game Log Files
+source("gameScore.R")
+source("gameLogs.R")
+source("gameSummary.R")
 
 
 # Load data
@@ -47,7 +49,7 @@ AdvancedPitchingData <- read_csv("PitcherSavantData.csv")
 
 playerDetails <- read_csv("playerDetails.csv")
 pitchTrackingBatter <- read_csv("YakkertechData/BaseballSavant/batters (pitch tracking).csv")
-pitchTrackingPitcher <- read_csv("YakkertechData/Baseballsavant_Pitcher/pitchers (pitch tracking).csv")
+pitchTrackingPitcher <- read_csv("YakkertechData/Baseballsavant_pitcher/pitchers (pitch tracking).csv")
 
 # UI
 ui <- fluidPage(
@@ -292,7 +294,7 @@ server <- function(input, output, session) {
                  div(
                    style = "display: flex; justify-content: center; margin: 20px 0;",
                    selectInput(
-                     inputId = "gameDate",
+                     inputId = "gameDateHitting",
                      label   = "Choose game date:",
                      choices = dates,
                      selected = tail(dates, 1),
@@ -301,7 +303,9 @@ server <- function(input, output, session) {
                  ),
                  div(
                    style = "padding-left: 30%; padding-right: 5%;",
-                   gameLogHittingUI("gameLogHitting")
+                   gameLogHittingUI("gameLogHitting"),
+                   br(),
+                   gameSummaryHittingUI("gameSummaryHitting")
                  ),
                  #Game Score Panel
                  div(
@@ -391,7 +395,7 @@ server <- function(input, output, session) {
                  div(
                    style = "display: flex; justify-content: center; margin: 20px 0;",
                    selectInput(
-                     inputId = "gameDate",
+                     inputId = "gameDatePitching",
                      label   = "Choose game date:",
                      choices = dates,
                      selected = tail(dates, 1),
@@ -400,7 +404,23 @@ server <- function(input, output, session) {
                  ),
                  div(
                    style = "padding-left: 30%; padding-right: 5%;",
-                   gameLogPitchingUI("gameLogPitching")
+                   gameLogPitchingUI("gameLogPitching"),
+                   br(),
+                   gameSummaryPitchingUI("gameSummaryPitching")
+                 ),
+                 #Game Score Panel
+                 div(
+                   style = "
+                    position: absolute;
+                    bottom: 2%;
+                    left: 2%;
+                    width: 27vw;
+                    height: 36vh;
+                    padding: 2;
+                    margin: 0;
+                    border-radius: 12px;
+                  ",
+                   gameScorePitchingUI("gameScorePitching")
                  )
                  
         )
@@ -554,7 +574,7 @@ server <- function(input, output, session) {
     data_source = reactive(AdvancedHittingData),
     player_name = selected_player,
     stat_cols = c("avgExitVelo", "maxExitVelo", "LASweetSpot", "hardHitPct", "squaredUpPct",
-                  "kPct", "bbPct", "whiffPct", "chasePct", "xBA", "xSLG", "xWOBA", "xWOBA_2",
+                  "kPct", "bbPct", "whiffPct", "chasePct", "xBA", "xSLG", "xWOBA",
                   "xBABIP", "babip")
   )
   
@@ -621,7 +641,7 @@ server <- function(input, output, session) {
       YakkertechHitterData |> 
         filter(Batter == selected_player())
     }),
-    date = reactive(input$gameDate),
+    date = reactive(input$gameDateHitting),
     stats_df = reactive({
       AdvancedHittingData |> 
         filter(Batter == selected_player())
@@ -632,7 +652,15 @@ server <- function(input, output, session) {
   gameScoreHittingServer(
     id     = "gameScoreHitting",
     data   = reactive(YakkertechHitterData),
-    date   = reactive(input$gameDate),
+    date   = reactive(input$gameDateHitting),
+    batter = selected_player
+  )
+  
+  #Get HITTING game summary
+  gameSummaryHittingServer(
+    id     = "gameSummaryHitting",
+    data   = reactive(YakkertechHitterData),
+    date   = reactive(input$gameDateHitting),
     batter = selected_player
   )
   
@@ -643,8 +671,26 @@ server <- function(input, output, session) {
       YakkertechPitcherData |> 
         filter(Pitcher == selected_player())
     }),
-    date = reactive(input$gameDate)
+    date = reactive(input$gameDatePitching)
   )
+  
+  #Get PITCHING game score
+  gameScorePitchingServer(
+    id     = "gameScorePitching",
+    data   = reactive(YakkertechPitcherData),
+    date   = reactive(input$gameDatePitching),
+    pitcher = selected_player
+  )
+  
+  #Get PITCHING game summary
+  gameSummaryPitchingServer(
+    id     = "gameSummaryPitching",
+    data   = reactive(YakkertechPitcherData),
+    date   = reactive(input$gameDatePitching),
+    pitcher = selected_player
+  )
+  
+
   
 }
     

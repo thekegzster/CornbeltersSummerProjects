@@ -1,0 +1,167 @@
+---
+title: "PitchDetails"
+format: html
+---
+
+
+Read in data and libraries
+```{r}
+library(tidyverse)
+KCLYakkertechData <- read_csv("KCLYakkertechData.csv")
+BeltersYakkertechData <- read_csv("BeltersPitcherYakkertechData.csv")
+pitcherData <- bind_rows(KCLYakkertechData, BeltersYakkertechData)
+```
+
+
+```{r}
+pitch_summary <- pitcherData |> 
+  filter(!is.na(RelSpeed), !is.na(HorzBreak)) |> 
+  group_by(Pitcher, TaggedPitchType) |> 
+  summarise(
+    meanSpeed = mean(RelSpeed, na.rm = TRUE),
+    count     = n(),
+    .groups   = "drop"
+  ) |> 
+  
+  group_by(Pitcher) |> 
+  mutate(
+    usageRate = count / sum(count),
+    totalPitches = sum(count)
+  ) |> 
+  ungroup()
+
+pitch_summary
+```
+
+
+
+```{r}
+pitch_colors <- c(
+  "Fastball" = "#c66471",
+  "Curveball" = "#90d8ed",
+  "Cutter" = "#9c695b",
+  "Changeup" = "#85c873",
+  "Sinker" = "#edb462",
+  "Knuckleball" = "#6c6cd1",
+  "Splitter" = "#87bbbc",
+  "Slider" = "#edeb75"
+)
+
+circle_data <- tibble(
+  radius = rep(c(6,12,18,24), each=200),
+  theta  = rep(seq(0, 2*pi, length.out=200), times=4)
+) %>%
+  mutate(
+    x = radius * cos(theta),
+    y = radius * sin(theta)
+  )
+
+circle24 <- tibble(
+  theta = seq(0, 2*pi, length.out = 360)
+) %>%
+  mutate(
+    x = 25 * cos(theta),
+    y = 25 * sin(theta)
+  )
+
+p <- pitcherData %>% 
+  filter(Pitcher=="Roy Ralston", !is.na(HorzBreak)) %>% 
+  ggplot(aes(x=HorzBreak, y=InducedVertBreak)) +
+  coord_fixed(xlim=c(-25,25), ylim=c(-25,25)) +
+  geom_polygon(
+    data        = circle24,
+    aes(x=x, y=y),
+    inherit.aes = FALSE,
+    fill        = "#e8f2f5",
+    color       = NA
+  ) +
+  geom_path(
+    data        = circle_data,
+    aes(x = x, y = y, group = radius),
+    inherit.aes = FALSE,
+    linetype    = "dashed",
+    color       = "black",
+    alpha = .5
+  ) +
+  geom_vline(xintercept = 0, alpha = .3) +
+  geom_hline(yintercept = 0, alpha = .3) +
+  geom_point(
+      aes(fill = TaggedPitchType),
+      shape  = 21,     
+      color  = "black",         
+      size   = 4,                
+      stroke = 0.5,          
+      alpha  = 0.85            
+    ) +
+  scale_fill_manual(
+    name   = "Pitch Type",
+    values = pitch_colors,
+    na.value = "grey50"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+
+p
+```
+
+```{r}
+library(knitr)
+
+# starting from your existing table_df
+table_df <- pitch_summary %>%
+  filter(Pitcher=="Roy Ralston") %>%
+  arrange(desc(usageRate)) %>%
+  transmute(
+    PitchType = TaggedPitchType,
+    Usage     = sprintf("%.0f%%", usageRate*100),
+    Speed     = sprintf("%.1f", meanSpeed),
+    Color     = paste0(
+      "<span style='display:inline-block;",
+      "width:12px;height:12px;background:", 
+      pitch_colors[TaggedPitchType],
+      ";border:1px solid #333;'></span>"
+    )
+  )
+
+# 1) pull out vectors in the order you want
+colors <- table_df$Color
+ptypes <- table_df$PitchType
+usage  <- table_df$Usage
+speed  <- table_df$Speed
+
+# 2) build a matrix with 3 rows: color / usage / speed
+m <- rbind(
+  colors,
+  ptypes,
+  usage,
+  speed
+)
+
+# 4) Turn into a data.frame so we can give rownames
+df_key <- as.data.frame(m, stringsAsFactors = FALSE)
+# set row names
+rownames(df_key) <- c("", " ", "Usage", "Avg Speed")
+# blank out column names
+colnames(df_key)  <- rep("", ncol(df_key))
+
+# 5) Print with kable, allowing the HTML in Color
+kable(
+  df_key,
+  format     = "html",
+  escape     = FALSE,
+  row.names  = TRUE,
+  align      = rep("c", ncol(df_key)),
+  table.attr = 'style="border-collapse: separate; border-spacing: 10px 0;"'
+)
+
+```
+
+
+
+
+

@@ -41,7 +41,6 @@ plot_percentile_bars <- function(player_data, stat_cols) {
                            xBA         = "xBA",
                            xSLG        = "xSLG",
                            xWOBA       = "xWOBA",
-                           xWOBA_2     = "xWOBA 2",
                            xBABIP      = "xBABIP",
                            babip       = "BABIP"
       ) 

@@ -68,7 +68,9 @@ corrections <- c(
   "Jackson  Natanek" = "Jackson Natanek",
   "Josh  Eisfelder" = "Josh Eisfelder",
   "Jackson Stnake" = "Jackson Stanek",
-  "Jackson Mcdonal" = "Jackson McDonald"
+  "Jackson Mcdonal" = "Jackson McDonald",
+  "Austin Weigand" = "Austin Wiegand",
+  "Dom Panozzo" = "Dominic Panozzo"
 )
 
 fixNames <- function(df, column, lookup){

@@ -1,0 +1,138 @@
+---
+title: "pitchClassifier"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+tidymodels_prefer()
+library(mclust)
+library(stringr)
+```
+
+```{r}
+#Read in data and only select columns we need
+pitches <- read_csv("KCLYakkertechData.csv") |> 
+  mutate(TaggedPitchType = factor(TaggedPitchType)) |> 
+  select(Pitcher, RelSpeed, SpinRate, SpinAxis, Tilt, InducedVertBreak, HorzBreak, TaggedPitchType)
+```
+Change tilt to a degree number from a clock number
+```{r}
+pitches <- pitches |> 
+  mutate(Tilt = as.character(Tilt)) |> 
+  
+  separate(
+    col    = Tilt,
+    into   = c("Tilt_hour", "Tilt_minute"),
+    sep    = ":",
+    convert = TRUE
+  ) |> 
+  
+  mutate(
+    Tilt_deg = ((Tilt_hour %% 12) + Tilt_minute / 60) * 30
+  ) |> 
+  select(-Tilt_hour, -Tilt_minute)
+```
+Turn spin axis and tilt from 0 to 360 degree numbers to sin and cosine values
+```{r}
+
+pitches <- pitches |> 
+  mutate(
+    SpinAxis_sin = sin(SpinAxis * pi/180),
+    SpinAxis_cos = cos(SpinAxis * pi/180),
+    Tilt_sin     = sin(Tilt_deg * pi/180),
+    Tilt_cos     = cos(Tilt_deg * pi/180)
+  ) |> 
+  select(-SpinAxis, -Tilt_deg)
+```
+
+
+```{r}
+data <- pitches |> 
+  filter(Pitcher == "Devan Tupper") |> 
+  select(-Pitcher, -SpinAxis_sin, -SpinAxis_cos, -Tilt_sin, -Tilt_cos) |> 
+  drop_na()
+
+dataScaled <- scale(data[, c("RelSpeed", "SpinRate", "InducedVertBreak","HorzBreak")])
+
+#new approach
+icl_fit <- mclustICL(dataScaled, G = 1:5) 
+icl_mat <- as.matrix(icl_fit)
+pos    <- which(icl_mat == max(icl_mat, na.rm = TRUE), arr.ind = TRUE)[1, ]
+bestG <- as.integer(rownames(icl_mat)[ pos[1] ])
+bestModel  <- colnames(icl_mat)[pos[2]]
+
+final_gmm <- Mclust(dataScaled,
+                    G          = bestG,
+                    modelNames = bestModel)
+data$cluster <- final_gmm$classification
+
+plot(final_gmm, what = "classification")
+
+```
+```{r}
+cluster_map <- data %>% 
+  count(cluster, TaggedPitchType) %>%
+  group_by(cluster) %>% 
+  slice_max(n, with_ties = FALSE) %>%
+  ungroup() %>% 
+  select(cluster, AutoTaggedPitchType = TaggedPitchType)
+
+data <- data |>
+  left_join(cluster_map, by = "cluster")
+```
+
+
+###############################################################################################################################
+Pitch Classifier Model
+```{r}
+pitches <- read_csv("KCLYakkertechData.csv")
+
+classifyPitches <- function(df, playerName) {
+  df <- df |> 
+    mutate(TaggedPitchType = factor(TaggedPitchType)) |> 
+    select(Pitcher, RelSpeed, SpinRate, InducedVertBreak, HorzBreak, TaggedPitchType, PitchUUID) |> 
+    filter(Pitcher == playerName) |> 
+    drop_na()
+
+  dataScaled <- scale(df[, c("RelSpeed", "SpinRate", "InducedVertBreak","HorzBreak")])
+  
+  icl_fit <- mclustICL(dataScaled, G = 1:5) 
+  icl_mat <- as.matrix(icl_fit)
+  pos <- which(icl_mat == max(icl_mat, na.rm = TRUE), arr.ind = TRUE)[1, ]
+  bestG <- as.integer(rownames(icl_mat)[pos[1]])
+  bestModel  <- colnames(icl_mat)[pos[2]]
+  
+  final_gmm <- Mclust(dataScaled,
+                      G          = bestG,
+                      modelNames = bestModel)
+  
+  df$cluster <- final_gmm$classification
+  
+  cluster_map <- df |> 
+    count(cluster, TaggedPitchType) |> 
+    group_by(cluster) |> 
+    slice_max(n, with_ties = FALSE) |> 
+    ungroup() |> 
+    select(cluster, AutoTaggedPitchType = TaggedPitchType)
+  
+  df <- df |>
+    left_join(cluster_map, by = "cluster") |> 
+    select(AutoTaggedPitchType, PitchUUID)
+}
+
+pitchers <- unique(pitches$Pitcher)
+test <- map_dfr(
+  pitchers,
+  ~ classifyPitches(pitches, .x)
+)
+pitches |> 
+  left_join(test, by = "PitchUUID")
+```
+
+```{r}
+
+```
+
+

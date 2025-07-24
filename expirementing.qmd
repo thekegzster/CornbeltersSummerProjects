@@ -1,0 +1,273 @@
+---
+title: "DataScienceExpirements"
+format: html
+---
+
+Title: Don't be like everyone else
+
+```{r}
+test <- read_csv("KCLYakkertechData.csv") 
+
+test <- test |> 
+    filter(!is.na(PitchCall)) |> 
+    filter(!(PitchCall %in% c("BallCalled", "HitByPitch", "StrikeCalled", "IntentionalWalk", "StrikeLooking"))) |> 
+    mutate(isWhiff = ifelse(PitchCall == "StrikeSwinging", 1, 0)) |> 
+    filter(AutoTaggedPitchType == "Fastball")
+
+df_bin <- test %>%
+  mutate(speed_bin = floor(RelSpeed)) %>%
+  group_by(speed_bin) %>%
+  summarise(
+    whiffPct = mean(isWhiff, na.rm = TRUE),
+    count    = n()
+  )
+
+ggplot(df_bin, aes(
+    x = speed_bin, y = whiffPct,
+    size = count, fill = whiffPct
+  )) +
+  geom_point(shape = 21, colour = "black") +
+  scale_y_continuous(labels = percent_format(1)) +
+  scale_fill_viridis_c(name = "Whiff %") +
+  scale_size_area(max_size = 12) +
+  labs(
+    x = "Speed Bin (mph)",
+    y = "Whiff Percentage",
+    title = "Whiff % vs. Speed (bubble size = sample count)"
+  ) +
+  theme_minimal()
+  
+
+```
+
+```{r}
+test <- read_csv("KCLYakkertechData.csv") 
+test <- test |> 
+  filter(AutoTaggedPitchType == "Fastball") |> 
+  filter(!is.na(InducedVertBreak) & !is.na(HorzBreak)) |> 
+  filter(!is.na(PlayResult)) |> 
+  filter(!is.na(ExitSpeed) & !is.na(Angle)) |> 
+  filter(PitcherThrows == "Left")  |> 
+  mutate(
+    z_h = (HorzBreak        - mean(HorzBreak,        na.rm=TRUE)) / sd(HorzBreak,        na.rm=TRUE),
+    z_v = (InducedVertBreak - mean(InducedVertBreak, na.rm=TRUE)) / sd(InducedVertBreak, na.rm=TRUE),
+    category = if_else(abs(z_h) <= 1 & abs(z_v) <= 1, "normal", "unique")
+  )
+
+test |> 
+  group_by(category) |> 
+  summarise(
+    n        = n(),
+    mean_xslg= mean(predicted_xslg, na.rm=TRUE),
+    sd_xslg  = sd(predicted_xslg, na.rm=TRUE)
+  )
+
+ggplot(test, aes(sample = predicted_xslg, color = category)) +
+  stat_qq() + stat_qq_line() +
+  facet_wrap(~category)
+
+tt <- t.test(
+  predicted_xslg ~ category,
+  data       = test,
+  alternative = "two.sided"   # default; use "greater" or "less" for one-sided
+)
+tt
+
+```
+
+```{r}
+test <- read_csv("KCLYakkertechData.csv")
+
+test <- test |> 
+  filter(AutoTaggedPitchType == "Fastball") |>
+  filter(PitcherThrows == "Right")
+
+horzLow <- quantile(test$HorzBreak, .001, na.rm = TRUE)
+horzHigh <- quantile(test$HorzBreak, .999, na.rm = TRUE)
+
+vertLow <- quantile(test$InducedVertBreak, .001, na.rm = TRUE)
+vertHigh <- quantile(test$InducedVertBreak, .999, na.rm = TRUE)
+
+test <- test |> 
+  filter(HorzBreak >= horzLow & HorzBreak <= horzHigh) |> 
+  filter(InducedVertBreak >= vertLow & InducedVertBreak <= vertHigh)
+
+test |> 
+  mutate()
+
+test |> 
+  ggplot(aes(x = HorzBreak, y = InducedVertBreak)) +
+  geom_point()
+```
+
+
+```{r}
+
+heat <- test %>%
+  mutate(hbin = cut_width(HorzBreak, 1.5),
+         vbin = cut_width(InducedVertBreak, 1.5)) %>%
+  group_by(hbin, vbin) %>%
+  summarize(avg_pred = mean(predicted_xslg, na.rm=TRUE),
+            .groups = "drop")
+
+ggplot(heat, aes(x = hbin, y = vbin, fill = avg_pred)) +
+  geom_tile() +
+  scale_fill_gradient(
+    low  = "white",
+    high = "red",
+    name = "Avg xSLG"
+  ) +
+  labs(
+    x = "Horizontal Break (°)", 
+    y = "Vertical Break (°)",
+    title = "Fastball xSLG Heatmap by Break"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+test <- read_csv("savantData2425.csv") |> 
+  filter(
+    pitch_type  == "FF",
+    pitch_hand  == "R",
+    !is.na(pfx_x), !is.na(pfx_z),
+    !is.na(events),
+    !is.na(launch_speed), !is.na(launch_angle)
+  ) |> 
+  mutate(
+    InducedVertBreak = 12 * pfx_z,
+    HorzBreak       = 12 * pfx_x
+  ) |> 
+  mutate(
+    z_h = (HorzBreak        - mean(HorzBreak,        na.rm=TRUE)) / sd(HorzBreak,        na.rm=TRUE),
+    z_v = (InducedVertBreak - mean(InducedVertBreak, na.rm=TRUE)) / sd(InducedVertBreak, na.rm=TRUE),
+    category = if_else(abs(z_h) <= 1 & abs(z_v) <= 1, "normal", "unique")
+  )
+
+test |> 
+  group_by(category) |> 
+  summarise(
+    n        = n(),
+    mean_xslg= mean(estimated_slg_using_speedangle, na.rm=TRUE),
+    sd_xslg  = sd(  estimated_slg_using_speedangle, na.rm=TRUE)
+  )
+
+# 2) Remove extreme outliers (e.g. top/bottom 1% of each break)
+break_limits <- test %>% summarize(
+  h_low  = quantile(HorzBreak,        0.01),
+  h_high = quantile(HorzBreak,        0.99),
+  v_low  = quantile(InducedVertBreak, 0.01),
+  v_high = quantile(InducedVertBreak, 0.99)
+)
+
+test_filtered <- test %>% 
+  filter(
+    between(HorzBreak,        break_limits$h_low,  break_limits$h_high),
+    between(InducedVertBreak, break_limits$v_low,  break_limits$v_high)
+  )
+
+# 3) Bin, summarize & throw away bins with too few pitches
+heat <- test_filtered %>%
+  mutate(
+    hbin = cut_width(HorzBreak,        width = 1.5),
+    vbin = cut_width(InducedVertBreak, width = 1.5)
+  ) %>%
+  group_by(hbin, vbin) %>%
+  summarise(
+    n        = n(),
+    avg_pred = mean(estimated_slg_using_speedangle, na.rm = TRUE),
+    .groups  = "drop"
+  ) %>%
+  filter(n >= 20)   # only keep bins with ≥ 20 pitches
+
+# 4) Plot
+ggplot(heat, aes(x = hbin, y = vbin, fill = avg_pred)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red", name = "Avg xSLG") +
+  labs(
+    x     = "Horizontal Break (in)",
+    y     = "Induced Vertical Break (in)",
+    title = "Fastball xSLG Heatmap by Break"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+```{r}
+
+df <- read_csv("KCLPitcherSavantData.csv") |> 
+  filter(IP > 3)
+
+bottomQ <- as.numeric(quantile(df$FastballVelo, .25))
+middleQ <- as.numeric(quantile(df$FastballVelo, .5))
+upperQ <- as.numeric(quantile(df$FastballVelo, .75))
+
+df <- df |> 
+  mutate(
+    FastballVeloGroup = case_when(
+      FastballVelo < bottomQ ~ 1,
+      FastballVelo >= bottomQ & FastballVelo < middleQ ~ 2,
+      FastballVelo >= middleQ & FastballVelo < upperQ ~ 3,
+      FastballVelo >= upperQ ~ 4
+    )
+  )
+
+df |> 
+  group_by(FastballVeloGroup) |> 
+  summarise(
+    ERA = 
+  )
+
+df |> 
+  ggplot(aes(x = FastballVelo, y = whiffPct)) +
+  geom_point()
+```
+
+
+```{r}
+test <- read_csv("KCLYakkertechData.csv")
+
+test <- test %>%
+  group_by(Batter, Date) |> 
+  filter(PlayResult %in% c("Out")) %>%
+  filter(predicted_xba > 0) |> 
+  summarise(maxXBA = max(predicted_xba, na.rm = TRUE),
+            n_exit_speed = sum(!is.na(ExitSpeed)),
+            .groups = "drop")
+
+ps <- c(.403, .366, .250, .140, .353)
+mean(ps)
+
+dist <- c(1 - ps[1], ps[1])
+
+for(i in 2:length(ps)) {
+  pi   <- ps[i]
+  dist <- convolve(dist, rev(c(1 - pi, pi)), type = "open")
+}
+
+names(dist) <- 0:5
+dist
+
+df_dist <- tibble(
+  hits = as.integer(names(dist)),  # 0,1,2,3,4,5
+  prob = as.numeric(dist)
+)
+
+ggplot(df_dist, aes(x = hits, y = prob)) +
+  geom_col(fill = "steelblue") +
+  scale_x_continuous(breaks = 0:5) +
+  labs(
+    x     = "# Hits",
+    y     = "",
+    title = "Expected Number of Hits"
+  ) +
+  theme_minimal()
+```
+
+

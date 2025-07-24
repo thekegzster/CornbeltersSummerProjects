@@ -10,7 +10,7 @@ df <- read_csv("inGame.csv")
 
 Pitcher Details In Game
 ```{r}
-InputPitcher <- "Vince Waterman"
+InputPitcher <- "Benedict Hendrickson"
 
 # 1) Flag location‐based strikes
 df <- df |> 

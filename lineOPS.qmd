@@ -1,0 +1,109 @@
+---
+title: "lineOPS"
+format: html
+editor: visual
+---
+```{r}
+suppressWarnings(library(tidyverse))
+
+```
+
+Load in csv files
+```{r}
+atBats <- read_csv("atbats.csv")
+pitches <- read_csv("pitches.csv")
+```
+Reformat and Reduce Tables
+```{r}
+run24 <- data.frame(
+  situationID = c(0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7),
+  outs = c(0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2),
+  expectedRuns = c(.491, .263, .095, .831, .493, .216, 1.083, .662, .321, 1.432, .940, .338, 1.420, .877, .436, 1.798, 1.113, .497, 1.937, 1.365, .576, 2.282, 1.529, .785)
+)
+
+pitches <- pitches |> 
+  select(ab_id, outs, on_1b, on_2b, on_3b)
+
+atBats <- atBats |> 
+  select(ab_id, batter_id, event, g_id, inning, top)
+```
+
+
+```{r}
+mapping <- tibble(
+  basesID = c(0, 100, 10, 1, 110, 101, 11, 111),
+  situationID = 0:7
+)
+
+pitches <- pitches |> 
+  mutate(on_1b = on_1b * 100,
+         on_2b = on_2b * 10) |> 
+  mutate(basesID = on_1b + on_2b + on_3b) |> 
+  left_join(mapping, by = "basesID") |> 
+  select(-on_1b, -on_2b, -on_3b, -basesID) |> 
+  group_by(ab_id) |> 
+  summarize(outs = first(outs),
+            situationID = first(situationID),
+            .groups = "drop")
+
+atBats <- atBats |> 
+  left_join(pitches, by = "ab_id")
+
+
+```
+
+```{r}
+atBats <- atBats |>
+  arrange(g_id, inning, top, ab_id) |> 
+  group_by(g_id, top) |> 
+  mutate(
+    spot_in_lineup = ((row_number() - 1) %% 9) + 1
+  ) |> 
+  mutate(run24ID = situationID * 10 + outs) |> 
+  ungroup()
+
+```
+
+```{r}
+run24 <- run24 |> 
+  mutate(run24ID = situationID * 10 + outs) |> 
+  select(-situationID, -outs)
+
+atBats <- atBats |> 
+  left_join(run24, by = "run24ID")
+
+expectedRunsLineup <- atBats |> 
+  select(spot_in_lineup, expectedRuns) |> 
+  group_by(spot_in_lineup) |> 
+  summarise(
+    avgExpectedRuns = mean(expectedRuns, na.rm = TRUE),
+    n = n(),
+    missing = sum(is.na(expectedRuns))
+  ) |> 
+  mutate(ABsPerSeason = n / 4) |> 
+  mutate(totalExpectedRuns = avgExpectedRuns * ABsPerSeason)
+
+
+```
+
+```{r}
+write_csv(expectedRunsLineup, "expectedRunsTable.csv")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

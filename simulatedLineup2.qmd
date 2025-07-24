@@ -1,0 +1,363 @@
+---
+title: "simulatedLineup2"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+df <- read_csv("savantData21_24.csv")
+savant_data_2025 <- read_csv("savantData25.csv")
+```
+
+Filter the savant data to only get the relevant columns for finding the outcomes and the base-out matrices
+```{r}
+filterSavantData <- function(df){
+  filtered_df <- df |> 
+    select(game_id, inning, half_inning, outs, pre_runner_1b_id, pre_runner_2b_id, pre_runner_3b_id,
+           batter_id, bat_side, pitcher_id, pitch_hand, events, home_score, away_score, post_home_score,
+           post_away_score, at_bat_number) |> 
+    filter(!is.na(events)) |>  
+    filter(inning < 10) |> 
+    arrange(game_id, inning, half_inning)
+  return(filtered_df)
+}
+
+```
+
+
+Find the percent outcomes for all 12 outcomes. The 6 outcomes I chose for both left and right handed pitching
+```{r}
+
+createBatterOutcomes <- function(df){
+  batterOutcomes <- df |> 
+    filter(!events %in% c("truncated_pa", "sac_bunt", "sac_fly", "sac_fly_double_play",
+                          "sac_bunt_double_play", "catcher_interf")) |> 
+    group_by(batter_id) |> 
+    summarize(
+      n_PA_L = sum(pitch_hand == "L"),
+      p_BB_L = sum((pitch_hand == "L" & (events %in% c("walk", "hit_by_pitch")))) / n_PA_L,
+      p_1B_L = sum((pitch_hand == "L" & events == "single")) / n_PA_L,
+      p_2B_L = sum((pitch_hand == "L" & events == "double")) / n_PA_L,
+      p_3B_L = sum((pitch_hand == "L" & events == "triple")) / n_PA_L,
+      p_HR_L = sum((pitch_hand == "L" & events == "home_run")) / n_PA_L,
+      p_out_L = 1 - p_BB_L - p_1B_L - p_2B_L - p_3B_L - p_HR_L,
+      n_PA_R = sum(pitch_hand == "R"),
+      p_BB_R = sum((pitch_hand == "R" & (events %in% c("walk", "hit_by_pitch")))) / n_PA_R,
+      p_1B_R = sum((pitch_hand == "R" & events == "single")) / n_PA_R,
+      p_2B_R = sum((pitch_hand == "R" & events == "double")) / n_PA_R,
+      p_3B_R = sum((pitch_hand == "R" & events == "triple")) / n_PA_R,
+      p_HR_R = sum((pitch_hand == "R" & events == "home_run")) / n_PA_R,
+      p_out_R = 1 - p_BB_R - p_1B_R - p_2B_R - p_3B_R - p_HR_R,
+    )
+  return(batterOutcomes)
+}
+
+```
+
+Create easier to handle on base flags and add runs scored as a column
+```{r}
+filtered_df <- filterSavantData(df)
+filtered_df <- filtered_df |> 
+  mutate(
+        runner_1B = if_else(pre_runner_1b_id > 0, 1, 0, missing=0),
+        runner_2B = if_else(pre_runner_2b_id > 0, 1, 0, missing=0),
+        runner_3B = if_else(pre_runner_3b_id > 0, 1, 0, missing=0)
+      ) |> 
+      select(-pre_runner_1b_id, -pre_runner_2b_id, -pre_runner_3b_id) |> 
+  mutate(
+    runsScored = if_else(half_inning == "top", post_away_score - away_score, post_home_score - home_score)
+  ) |> 
+  select(-post_away_score, -post_home_score, -away_score, -home_score) |> 
+  group_by(game_id) |> 
+  arrange(game_id, at_bat_number) |> 
+  mutate(
+    runsScoredLag = lag(runsScored)
+  ) |> 
+  ungroup()
+
+```
+
+
+Create the matrix for all input codes and output codes
+```{r}
+createCode <- function(df, inputFlag){
+  df2 <- df |> 
+    mutate(
+      outcomeID = case_when(
+        events %in% c("walk", "hit_by_pitch", "catcher_interf") ~ 0,
+        events == "single"                    ~ 1,
+        events == "double"                    ~ 2,
+        events == "triple"                    ~ 3,
+        events == "home_run"                  ~ 4,
+        TRUE                                  ~ 5 
+      )
+    )
+  
+  if(inputFlag) {
+    df3 <- df2 |> mutate(
+      rawCode = 10000 * runner_1B + 1000 * runner_2B + 100 * runner_3B + 10* outs + outcomeID
+    )
+  } else{
+    df3 <- df2 |>  mutate(
+      rawCode = 10000 * runner_1B + 1000 * runner_2B + 100 * runner_3B + 10* outs + runsScoredLag
+    )
+  }
+  df3 |> 
+    mutate(code = sprintf("%05d", rawCode)) |> 
+    pull(code)
+}
+```
+
+
+Generate all possible input and output code values
+```{r}
+full_inputs <- expand.grid(
+    r1 = 0:1, r2 = 0:1, r3 = 0:1,
+    outs = 0:2, outcomeID = 0:5
+  ) |> 
+  transmute(
+    code = sprintf(
+      "%05d",
+      10000*r1 + 1000*r2 + 100*r3 + 10*outs + outcomeID
+    )
+  ) |> 
+  pull(code)
+
+full_outputs <- expand.grid(
+    r1 = 0:1, r2 = 0:1, r3 = 0:1,
+    outs = 0:2, runsScored = 0:4
+  ) |> 
+  transmute(
+    code = sprintf(
+      "%05d",
+      10000*r1 + 1000*r2 + 100*r3 + 10*outs + runsScored
+    )
+  ) |> 
+  pull(code)
+```
+
+Tag each plate appearance with its input and output code
+```{r}
+df_codes <- filtered_df |> 
+  mutate(
+    inputCode = createCode(filtered_df, TRUE),
+    outputCode = createCode(filtered_df, FALSE)
+  ) |> 
+  group_by(game_id) |> 
+  arrange(at_bat_number, .by_group = TRUE) |> 
+  mutate(
+    nextOutputCode = lead(outputCode)
+  ) |> 
+  ungroup()
+
+#Removes the last plate appearance in a game since it has no valid output code
+df_codes <- df_codes |> 
+  filter(!is.na(nextOutputCode))
+
+```
+
+Count and turn into row-conditional probabilities
+```{r}
+prob_table <- df_codes |> 
+  count(inputCode, nextOutputCode) |> 
+  complete(
+    inputCode = full_inputs,
+    nextOutputCode = full_outputs,
+    fill = list(n = 0)
+  ) |> 
+  group_by(inputCode) |> 
+  mutate(
+    p = n / sum(n)
+  ) |> 
+  ungroup()
+```
+
+
+Pivot into a 144x120 matrix
+```{r}
+prob_matrix <- prob_table |> 
+  select(inputCode, nextOutputCode, p) |> 
+  pivot_wider(
+    names_from = nextOutputCode,
+    values_from = p
+  ) |> 
+  arrange(inputCode) |> 
+  column_to_rownames("inputCode")
+
+prob_matrix <- prob_matrix |>  rownames_to_column(var = "inputCode")
+
+```
+
+
+Test code to find edge cases
+```{r}
+df_codes |> 
+  filter(inputCode == "00000", nextOutputCode == "10010")
+
+test <- df_codes |> 
+  filter(game_id == 717644, , inning == 8)
+
+test <- df |> 
+  filter(game_id == 717644, inning == 8)
+
+test <- df_codes |> 
+  group_by(game_id) |> 
+  mutate(
+    runsScoredLag = lag(runsScored)
+  )
+
+```
+
+
+Simulate an outcome from a Plate Appearance
+```{r}
+simulateOutcome <- function(batterID, pitcher_hand, outcomesTable){
+  batterOutcomes <- outcomesTable |> 
+    filter(batter_id == batterID)
+    
+  if(pitcher_hand == "L"){
+      probs <- c(
+        BB = batterOutcomes$p_BB_L,
+        Single = batterOutcomes$p_1B_L,
+        Double = batterOutcomes$p_2B_L,
+        Triple = batterOutcomes$p_3B_L,
+        Home_Run = batterOutcomes$p_HR_L,
+        Out = batterOutcomes$p_out_L
+      )
+  }
+  if(pitcher_hand == "R"){
+      probs <- c(
+        BB = batterOutcomes$p_BB_R,
+        Single = batterOutcomes$p_1B_R,
+        Double = batterOutcomes$p_2B_R,
+        Triple = batterOutcomes$p_3B_R,
+        Home_Run = batterOutcomes$p_HR_R,
+        Out = batterOutcomes$p_out_R
+      )
+  }
+  
+  outcome <- sample(names(probs), size = 1, prob = probs)
+  if(outcome == "BB"){
+    outcome <- 0
+  }
+  if(outcome == "Single"){
+    outcome <- 1
+  }
+  if(outcome == "Double"){
+    outcome <- 2
+  }
+  if(outcome == "Triple"){
+    outcome <- 3
+  }
+  if(outcome == "Home_Run"){
+    outcome <- 4
+  }
+  if(outcome == "Out"){
+    outcome <- 5
+  }
+  return(outcome)
+}
+
+batterOutcomes2025 <- filterSavantData(savant_data_2025) |> 
+  createBatterOutcomes()
+
+simulateOutcome(656941, "L", batterOutcomes2025)
+```
+Function to get output code from input code
+```{r}
+getOutputCode <- function(input, probMatrix){
+  selectedInputCode <- probMatrix |> 
+    filter(inputCode == input)
+
+  probs <- selectedInputCode |> 
+    select(-inputCode) |> 
+    unlist(use.names = FALSE)
+  #print(probs)
+  
+  codes <- names(selectedInputCode)[-1]
+  #print(codes)
+
+  outputCode <- sample(codes, size = 1, prob = probs)
+  return(outputCode)
+}
+
+```
+
+Simulate an Inning
+```{r}
+simulateInning <- function(lineup, lineupPosition, pitcherHand){
+  lastOutputCode <- "00000"
+  outs <- 0
+  runs <- 0
+  
+  repeat{
+    inputCode <- lastOutputCode
+    outcome <- simulateOutcome(lineup[lineupPosition], pitcherHand, batterOutcomes2025)
+    outcome <- as.character(outcome)
+    substr(inputCode, 5, 5) <- outcome #Change the last digit of the input code
+    outputCode <- getOutputCode(inputCode, prob_matrix)
+    
+    runsAdded <- as.integer(substr(outputCode, 5, 5))
+    outs <- as.integer(substr(outputCode, 4, 4))
+    
+    runs <- runs + runsAdded
+    
+    #Prints out every at bat
+#    cat(sprintf(
+#      "PA #%2d | Batter: %s | Outcome: %s | +Outs: %d | +Runs: %d | TotRuns: %d\n, | InputCode: %s\n",
+#      lineupPosition,
+#      as.character(lineup[lineupPosition]),
+#      outcome,
+#      outs,
+#      runsAdded,
+#      runs,
+#      inputCode
+#    ))
+    
+    #prep for next batter
+    lastOutputCode <- outputCode
+    lineupPosition <- ((lineupPosition %% length(lineup)) + 1)
+    
+    #Break when it goes back to "00000" (Start of inning state)
+    if (lastOutputCode == "00000") break
+  }
+  return(list(runs = runs, lineupPosition = lineupPosition))
+  
+}
+
+testLineup <- c(656941, 656941, 656941, 656941, 656941, 656941, 656941, 656941, 656941)
+test <- simulateInning(testLineup, 1, "L")
+
+```
+
+Simulate Game
+```{r}
+simulateGame <- function(lineup, pitcherHand){
+  lineupPosition <- 1
+  totalRuns <- 0
+  
+  for(i in 1:9){
+    inningOuput <- simulateInning(lineup, lineupPosition, "L")
+    
+    totalRuns <- totalRuns + inningOuput$runs
+    lineupPosition <- inningOuput$lineupPosition
+  }
+  return(totalRuns)
+}
+
+testLineup <- c(680776, 680776, 680776, 680776, 680776, 680776, 680776, 680776, 680776)
+simulateGame(testLineup, "L")
+```
+
+```{r}
+
+
+
+```
+
+
+
+
+
+

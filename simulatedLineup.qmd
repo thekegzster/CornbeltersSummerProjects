@@ -1,0 +1,229 @@
+---
+title: "Game Simulator"
+format: html
+editor: visual
+---
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+kclData <- read_csv("KCLStats2024.csv")
+```
+
+Make a test input roster from the KCL data
+```{r}
+roster <- kclData |> 
+  rename(FirstName = `First Name`,
+         LastName = `Last Name`,
+         PA = `Plate Appearances`,
+         BA = `Batting Average`,
+         OBP = `On-base Percentage`,
+         SLG = `Slugging Percentage`) |> 
+  filter(Team == "Merchants 2024",
+         FirstName != "HR",
+         PA > 10) |> 
+  mutate(Name = paste0(FirstName, " ", LastName)) |> 
+  select(Name, PA, BA, OBP, SLG) |> 
+  mutate(Position = NA)
+
+```
+
+Filter out Home Run Derbies from KCL Data
+```{r}
+kclData <- kclData |> 
+  rename(FirstName = `First Name`,
+         LastName = `Last Name`,
+         PA = `Plate Appearances`) |> 
+  filter(
+    ! FirstName %in% c("DERBY", "HR Derby 2", "HR Derby 3", "HR Derby 1", "Derby", "HR")
+  )
+```
+
+Quickly calculate the %  of extra bases that is made up of doubles, triples, or home runs in KCL
+```{r}
+kclData |> 
+  filter(PA > 0) |> 
+  summarize(
+    HR = sum(`Home Runs`),
+    Triples = sum(Triples),
+    Doubles = sum(Doubles)
+  )
+
+
+```
+
+
+Create percentages of each outcome
+```{r}
+roster <- roster |> 
+  mutate(
+    p_BB = OBP - BA,
+    ISO = SLG - BA,
+    p_HR = .1453 * ISO,
+    p_3B = .1674 * ISO,
+    p_2B = .6872 * ISO,
+    p_1B = BA - (p_HR + p_3B + p_2B),
+    p_out = 1 - OBP,
+    )
+```
+
+
+Simulate a PA function
+```{r}
+simulatePA <- function(player) {
+  events <- c("out","walk","single","double","triple","HR")
+  probs  <- with(player, c(
+    p_out,
+    p_BB,
+    p_1B,
+    p_2B,
+    p_3B,
+    p_HR
+  ))
+  sample(events, size = 1, prob = probs)
+}
+```
+
+
+Simulate runs scored in an inning given a lineup
+```{r}
+simulateInning <- function(lineup, start_i) {
+  bases <- c(0,0,0)   # [1B, 2B, 3B]
+  outs  <- 0
+  runs  <- 0
+  N     <- nrow(lineup)
+  i     <- start_i
+
+  while (outs < 3) {
+    ev <- simulatePA(lineup[i, ])
+    
+    if (ev == "out") {
+      outs <- outs + 1
+    } 
+    else if (ev == "walk") {
+      # walk: batter to first, force‐advance runners
+      if (bases[1] == 1) {
+        # first is occupied → force
+        if (bases[2] == 1) {
+          # second occupied → force
+          if (bases[3] == 1) {
+            runs <- runs + 1
+          } else {
+            bases[3] <- 1
+          }
+        }
+        bases[2] <- 1
+      }
+      bases[1] <- 1
+    
+    } else {
+      # how many bases the batter earns
+      hits <- switch(ev,
+                     single = 1,
+                     double = 2,
+                     triple = 3,
+                     HR     = 4)
+      # score any runners forced past 3rd
+      runs <- runs + sum(bases * (seq_along(bases) + hits >= 4))
+      
+      # slide existing runners
+      newBases <- c(0,0,0)
+      for (b in 3:1) {
+        if (bases[b] == 1) {
+          newpos <- b + hits
+          if (newpos <= 3) newBases[newpos] <- 1
+        }
+      }
+      # place the batter (or score on a homer)
+      if (hits < 4) {
+        newBases[hits] <- 1
+      } else {
+        runs <- runs + 1
+      }
+      bases <- newBases
+    }
+    
+    # advance to next batter (wrap around)
+    i <- if (i < N) i + 1 else 1
+  }
+  
+  list(runs = runs, next_i = i)
+}
+
+```
+
+Simulate Game
+```{r}
+simulateGame <- function(lineup, innings = 9) {
+  total_runs <- 0
+  current_i  <- 1     # start with the #1 spot
+  
+  for (inning in seq_len(innings)) {
+    res         <- simulateInning(lineup, current_i)
+    total_runs  <- total_runs + res$runs
+    current_i   <- res$next_i
+  }
+  
+  total_runs
+}
+```
+
+
+Genetic Algorithm
+```{r}
+library(GA)
+library(parallel)
+
+# 1) set up cluster, leaving one core free
+ncores <- max(detectCores() - 1, 1)
+cl     <- makeCluster(ncores)
+
+# 2) export your data & simulation functions to the workers
+clusterExport(cl, c("roster", "simulatePA", "simulateInning", "simulateGame"))
+
+# 3) redefine fitness() to use parSapply instead of replicate()
+fitness <- function(order) {
+  lineup <- roster[order[1:9], ]
+  reps   <- 500
+  
+  runs <- parSapply(
+    cl,
+    1:reps,
+    function(i) simulateGame(lineup)
+  )
+  mean(runs)
+}
+
+# 4) run the GA as before
+N <- nrow(roster)
+GAout <- ga(
+  type      = "permutation",
+  fitness   = fitness,
+  lower     = 1,
+  upper     = N,
+  popSize   = 50,
+  maxiter   = 100,
+  run       = 50,
+  pmutation = 0.2,
+  elitism   = 2
+)
+
+# 5) clean up the cluster
+stopCluster(cl)
+
+# 6) pull out and inspect your optimized 9-hole
+bestOrder      <- GAout@solution[1, ]
+optimizedLineup <- roster[bestOrder[1:9], ]
+print(optimizedLineup)
+```
+```{r}
+reps_final <- 1000
+final_runs <- replicate(reps_final, simulateGame(optimizedLineup))
+mean(final_runs)
+quantile(final_runs, c(0.025, 0.975))
+
+```
+
+
